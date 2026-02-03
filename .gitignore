@@ -14,6 +14,10 @@ ENV/
 data/raw/
 data/processed/
 data/reports/
+# Allow .gitkeep files to preserve directory structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/reports/.gitkeep
 *.csv
 *.parquet
 *.feather
@@ -54,6 +58,8 @@ models/checkpoints/
 # Logs
 *.log
 logs/
+# Allow .gitkeep file to preserve directory structure
+!logs/.gitkeep
 *.log.*
 
 # Testing
