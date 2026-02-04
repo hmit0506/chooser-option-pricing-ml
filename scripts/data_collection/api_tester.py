@@ -133,16 +133,19 @@ class APITester:
         
         # FRED API
         self.fred_client = None
-        if FRED_AVAILABLE and self.api_keys.get('fred'):
-            try:
-                self.fred_client = Fred(api_key=self.api_keys['fred'])
-                print("[OK] FRED API client initialized")
-            except Exception as e:
-                print(f"[FAIL] FRED API client failed: {e}")
-        elif not FRED_AVAILABLE:
-            print("[FAIL] FRED API library not installed")
+        fred_key = self.api_keys.get('fred')
+        if FRED_AVAILABLE:
+            if fred_key:
+                try:
+                    self.fred_client = Fred(api_key=fred_key)
+                    print("[OK] FRED API client initialized")
+                except Exception as e:
+                    print(f"[FAIL] FRED API client failed: {e}")
+            else:
+                print("[FAIL] FRED API key not provided in .env file")
+                print("       Set FRED_API_KEY in .env file to test FRED API")
         else:
-            print("[FAIL] FRED API key not provided")
+            print("[FAIL] FRED API library not installed")
     
     def test_yahoo_finance(self) -> Tuple[bool, Dict]:
         """
@@ -517,16 +520,25 @@ def load_api_keys() -> Dict[str, str]:
     # Helper to load a single key
     def load_key(env_var: str, key_name: str, default=None, required=False):
         key = os.getenv(env_var)
-        if key and key.strip() and key != 'your_key_here':
+        
+        # Check if key is valid (not empty, not placeholder)
+        invalid_values = ['', 'your_key_here', 'your_alpha_vantage_key_here', 'your_fred_api_key_here']
+        
+        if key and key.strip() and key.strip() not in invalid_values:
             api_keys[key_name] = key.strip()
             print(f"[INFO] {key_name.replace('_', ' ').title()} API key loaded")
             return True
         else:
             if default:
                 api_keys[key_name] = default
-                print(f"WARNING: {env_var} not found, using {default}")
+                print(f"WARNING: {env_var} not found or invalid, using {default}")
             elif required:
-                print(f"WARNING: {env_var} not found, tests may fail")
+                print(f"WARNING: {env_var} not found or invalid, tests may fail")
+            else:
+                # For FRED, show warning if key is missing
+                if key_name == 'fred':
+                    print(f"WARNING: {env_var} not found or invalid")
+                    print(f"         FRED API tests will be skipped")
             return False
     
     load_key('ALPHA_VANTAGE_KEY', 'alpha_vantage', default='demo')
