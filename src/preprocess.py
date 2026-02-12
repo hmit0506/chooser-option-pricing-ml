@@ -30,10 +30,11 @@ def clean_and_align(data: dict, ticker: str = "JPM") -> pd.DataFrame:
     Merge raw datasets onto a unified daily index. Handle missing values and alignment.
 
     Uses JPM trading days as base calendar. Forward-fills VIX and Treasury on non-trading days.
+    Treasury is optional (when FRED_API_KEY not set); uses default 0.04 if missing.
     """
     stock = data["stock"]
     vix = data["vix"]
-    treasury = data["treasury"]
+    treasury = data.get("treasury")
     dividends = data.get("dividends")
 
     # Base index: union of stock and vix dates (trading days)
@@ -61,9 +62,13 @@ def clean_and_align(data: dict, ticker: str = "JPM") -> pd.DataFrame:
     df["vix_close"] = vix_close
 
     # Treasury: DGS10 as risk-free rate proxy (convert % to decimal)
-    treasury_col = "DGS10" if "DGS10" in treasury.columns else "value"
-    treasury_10y = treasury[treasury_col].reindex(base_index).ffill()
-    df["treasury_10y"] = treasury_10y / 100.0  # 2.46 -> 0.0246
+    # Use placeholder 0.04 when FRED data not available (e.g., CI without FRED_API_KEY)
+    if treasury is not None:
+        treasury_col = "DGS10" if "DGS10" in treasury.columns else "value"
+        treasury_10y = treasury[treasury_col].reindex(base_index).ffill()
+        df["treasury_10y"] = treasury_10y / 100.0  # 2.46 -> 0.0246
+    else:
+        df["treasury_10y"] = 0.04  # Default risk-free rate when FRED unavailable
 
     return df
 
@@ -106,7 +111,8 @@ def run_pipeline(ticker: str = "JPM", verbose: bool = True) -> pd.DataFrame:
         print("\n[1/5] Loading raw data...")
     data = load_raw_data(ticker)
     if verbose:
-        print(f"  Stock: {data['stock'].shape}, VIX: {data['vix'].shape}, Treasury: {data['treasury'].shape}")
+        treasury_shape = data["treasury"].shape if data.get("treasury") is not None else "N/A (using default)"
+        print(f"  Stock: {data['stock'].shape}, VIX: {data['vix'].shape}, Treasury: {treasury_shape}")
 
     # 2. Clean & align
     if verbose:

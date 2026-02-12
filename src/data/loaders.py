@@ -62,10 +62,22 @@ def load_yahoo_data(ticker: str = "JPM") -> Tuple[pd.DataFrame, pd.DataFrame, Op
     return stock_df, vix_df, dividends_df
 
 
-def load_fred_data() -> pd.DataFrame:
-    """Load FRED treasury rates (combined DGS3MO, DGS10, FEDFUNDS)."""
+def load_fred_data() -> Optional[pd.DataFrame]:
+    """
+    Load FRED treasury rates (combined DGS3MO, DGS10, FEDFUNDS).
+    Returns None if FRED data not available (e.g., FRED_API_KEY not set in CI).
+    """
     combined_path = RAW_FRED_DIR / "treasury_rates_combined"
-    return _load_file(combined_path)
+    parquet_path = combined_path.with_suffix(".parquet")
+    csv_path = combined_path.with_suffix(".csv")
+    if parquet_path.exists():
+        try:
+            return pd.read_parquet(parquet_path)
+        except Exception:
+            pass
+    if csv_path.exists():
+        return pd.read_csv(csv_path, index_col=0, parse_dates=True)
+    return None
 
 
 def load_raw_data(ticker: str = "JPM") -> dict:
@@ -92,7 +104,8 @@ def load_raw_data(ticker: str = "JPM") -> dict:
             dividends_df.index = dividends_df.index.tz_localize(None)
         dividends_df.index = pd.to_datetime(dividends_df.index).normalize()
 
-    treasury_df.index = pd.to_datetime(treasury_df.index).normalize()
+    if treasury_df is not None:
+        treasury_df.index = pd.to_datetime(treasury_df.index).normalize()
 
     return {
         "stock": stock_df,
