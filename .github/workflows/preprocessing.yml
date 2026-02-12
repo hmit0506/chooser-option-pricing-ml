@@ -1,0 +1,53 @@
+# Week 2 Preprocessing Pipeline - GitHub Actions
+# Runs data preprocessing (load, clean, feature engineering) on schedule.
+# Note: Raw data must exist (run collect_all.py first). Processed output is gitignored.
+
+name: Preprocessing Pipeline
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC (configurable)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+  push:
+    branches: [main]
+    paths:
+      - 'src/preprocess.py'
+      - 'src/data/**'
+      - 'src/features/**'
+    # Optionally run on relevant code changes
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run preprocessing pipeline
+        run: python src/preprocess.py
+        env:
+          # Raw data paths are relative to repo; pipeline expects data/raw/
+          # For scheduled runs: ensure raw data is available (e.g., from prior collection job)
+          DATA_START_DATE: ${{ vars.DATA_START_DATE || '2018-01-01' }}
+          DATA_END_DATE: ${{ vars.DATA_END_DATE || '2024-12-31' }}
+          TARGET_TICKER: ${{ vars.TARGET_TICKER || 'JPM' }}
+
+      # Optional: persist processed artifacts (if small enough for workflow artifacts)
+      - name: Upload processed dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-dataset
+          path: data/processed/
+          retention-days: 7
