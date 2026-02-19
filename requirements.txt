@@ -19,6 +19,9 @@ matplotlib>=3.8.0
 seaborn>=0.12.2
 plotly>=5.17.0
 
+# Configuration
+pyyaml>=6.0
+
 # Development Tools
 python-dotenv>=1.0.0
 jupyter>=1.0.0

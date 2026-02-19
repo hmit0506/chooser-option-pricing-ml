@@ -17,89 +17,103 @@ This project is part of the Avalok Capital Quantitative Research Internship, foc
 ```
 chooser-option-pricing/
 ├── config/                  # Configuration files
-│   └── (configuration files for API keys, model parameters, etc.)
-│
+│   └── model_params.yaml   # BSM model parameters (Week 3)
 ├── data/                    # Data storage
 │   ├── raw/                 # Raw data from APIs (gitignored)
-│   ├── processed/           # Processed/cleaned data (gitignored)
+│   │   ├── yahoo_finance/   # JPM, VIX, dividends
+│   │   └── fred/            # Treasury rates (DGS10, etc.)
+│   ├── processed/           # Processed dataset (gitignored)
 │   └── reports/             # Data analysis reports (gitignored)
 │
 ├── docs/                    # Documentation
+│   ├── feature_engineering.md
 │   └── weekly_reports/      # Weekly progress reports
 │
-├── logs/                    # Application logs (gitignored)
+├── .github/workflows/       # CI/CD
+│   └── preprocessing.yml   # Data collection + preprocessing pipeline
 │
 ├── models/                  # Trained model files (gitignored)
-│   ├── *.pkl, *.h5, *.joblib, etc.
+├── notebooks/               # Jupyter notebooks
+│   ├── week3_bsm_pricing.ipynb   # BSM chooser pricing (Week 3)
+│   └── week3_validation.ipynb    # Validation & sensitivity (Week 3)
+├── scripts/                 # Data collection scripts
+│   ├── data_collection/    # Yahoo Finance, FRED collectors
+│   ├── analysis/
+│   └── utils/
 │
-├── notebooks/               # Jupyter notebooks for exploration
+├── src/                     # Core pipeline code
+│   ├── preprocess.py       # Main preprocessing pipeline (Week 2)
+│   ├── data/               # Data loaders
+│   ├── features/           # Feature engineering
+│   └── models/             # BSM chooser pricing module (Week 3)
 │
-├── scripts/                 # Python scripts
-│   ├── analysis/           # Analysis and visualization scripts
-│   ├── data_collection/    # Data fetching and preprocessing scripts
-│   └── utils/              # Utility functions and helpers
-│
-├── tests/                   # Unit tests and integration tests
-│
-├── .cursorignore           # Cursor AI ignore patterns
-├── .cursorrules            # Cursor AI coding rules
-├── .gitignore              # Git ignore rules
-├── LICENSE                 # MIT License
-├── README.md               # Project documentation
-└── requirements.txt        # Python dependencies
+├── tests/                   # Unit tests
+├── .env.example             # API key template
+├── requirements.txt
+└── README.md
 ```
 
 ### Directory Descriptions
 
-- **config/**: Configuration files for API keys, model hyperparameters, and other settings
-- **data/**: All data files (raw, processed, reports) are gitignored to avoid committing large files
-- **docs/**: Project documentation and weekly progress reports
-- **logs/**: Application logs generated during execution
-- **models/**: Trained model files (various formats: pickle, HDF5, joblib, etc.)
-- **notebooks/**: Jupyter notebooks for exploratory data analysis and prototyping
-- **scripts/**: Production-ready Python scripts organized by functionality
-  - **analysis/**: Scripts for data analysis, visualization, and model evaluation
-  - **data_collection/**: Scripts for fetching data from APIs (yfinance, Alpha Vantage, FRED)
-  - **utils/**: Shared utility functions and helper modules
-- **tests/**: Unit tests and integration tests using pytest
+- **src/models/**: BSM chooser option pricing — Monte Carlo simulation + Rubinstein (1991) analytic formula
+- **src/data/**, **src/features/**, **src/preprocess.py**: Data loading, feature engineering, preprocessing pipeline
+- **config/model_params.yaml**: Paper parameters (S0, K, r, σ, q, T1, T2)
+- **notebooks/**: Week 3 BSM pricing and validation notebooks with sensitivity analysis
+- **scripts/data_collection/**: Fetches raw data from Yahoo Finance (no key) and FRED (key required)
+- **data/raw/**: Raw JPM OHLCV, VIX, dividends, Treasury rates
+- **data/processed/**: Output of preprocessing: 12+ features, parquet + CSV
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip (Python package manager)
+- Python 3.8+
+- pip
 
 ### Installation
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd chooser-option-pricing
-```
-
-2. Create a virtual environment (recommended):
-```bash
+git clone https://github.com/hmit0506/chooser-option-pricing-ml.git
+cd chooser-option-pricing-ml
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
+source venv/bin/activate   # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up configuration:
-   - Create a `.env` file in the project root (see `.env.example` if available)
-   - Add your API keys for data sources (Alpha Vantage, FRED, etc.)
+### Configuration
+
+- Copy `.env.example` to `.env`
+- **FRED_API_KEY**: Required for Treasury data (DGS10). Get a free key at [FRED](https://fred.stlouisfed.org/docs/api/api_key.html). Without it, preprocessing uses a default risk-free rate.
+- Yahoo Finance (JPM, VIX) works without any API key.
+
+### Data Pipeline
+
+1. **Collect raw data:**
+   ```bash
+   python scripts/data_collection/collect_all.py
+   ```
+   Saves to `data/raw/yahoo_finance/` and `data/raw/fred/`.
+
+2. **Run preprocessing:**
+   ```bash
+   python src/preprocess.py
+   ```
+   Produces `data/processed/processed_dataset.parquet` and `.csv` with 12+ engineered features.
+
+### CI/CD
+
+GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` as a repository secret (Settings → Secrets and variables → Actions) for full Treasury data.
+
+## 📝 Documentation
+
+- [Feature engineering](docs/feature_engineering.md) – 12 features, formulae, rationale
+- [Week 2 report](docs/weekly_reports/week2_report.md) – Preprocessing pipeline
+- [Week 3 report](docs/weekly_reports/week3_report.md) – BSM model replication & validation
 
 ## 📝 Development Notes
 
-- All code and comments must be written in English (see `.cursorrules`)
-- Follow PEP 8 style guidelines for Python code
-- Write tests for new features in the `tests/` directory
-- Use Jupyter notebooks in `notebooks/` for exploratory work
-- Commit trained models and data files are excluded via `.gitignore`
+- All code and comments in English (see `.cursorrules`)
+- Conventional commits: `feat:`, `fix:`, `docs:`, etc.
 
 ## 📄 License
 
