@@ -109,6 +109,9 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Feature engineering](docs/feature_engineering.md) – 12 features, formulae, rationale
 - [Week 2 report](docs/weekly_reports/week2_report.md) – Preprocessing pipeline
 - [Week 3 report](docs/weekly_reports/week3_report.md) – BSM model replication & validation
+- [Week 4 report](docs/weekly_reports/week4_report.md) – Baseline evaluation weekly summary
+- [Week 4 validation report](docs/week4_validation_report.md) – Baseline error metrics and limitations
+- [BSM benchmark](docs/bsm_benchmark.md) – Official baseline metrics for ML comparison
 
 ## 📝 Development Notes
 

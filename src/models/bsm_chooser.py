@@ -9,6 +9,7 @@ to choose whether it becomes a European call or put (same K, same T2).
 """
 
 import numpy as np
+import pandas as pd
 from scipy.stats import norm
 from typing import Dict, Tuple, Optional
 
@@ -268,3 +269,121 @@ def rubinstein_chooser(
         + k * np.exp(-r * t2) * norm.cdf(-y2)
     )
     return chooser
+
+
+# ---------------------------------------------------------------------------
+# Week 4 helpers: metrics and historical proxy backtest
+# ---------------------------------------------------------------------------
+
+def compute_error_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    """
+    Compute standard regression error metrics for model validation.
+
+    Args:
+        y_true: Ground-truth values.
+        y_pred: Predicted values.
+
+    Returns:
+        Dict containing MAE, RMSE, and MAPE.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    err = y_pred - y_true
+
+    mae = np.mean(np.abs(err))
+    rmse = np.sqrt(np.mean(err ** 2))
+
+    # Stable MAPE: ignore near-zero denominators
+    eps = 1e-8
+    mask = np.abs(y_true) > eps
+    mape = np.mean(np.abs(err[mask] / y_true[mask])) if np.any(mask) else np.nan
+
+    return {
+        "mae": float(mae),
+        "rmse": float(rmse),
+        "mape": float(mape),
+    }
+
+
+def realized_proxy_pv(
+    s_t1_realized: float,
+    s_t2_realized: float,
+    k: float,
+    r: float,
+    t2: float,
+    use_proper_rule: bool = False,
+    q: float = 0.0,
+    tau: float = 0.0,
+) -> float:
+    """
+    Compute realized (ex-post) chooser proxy present value from observed path.
+
+    This is used when market chooser transaction prices are unavailable.
+    Decision rule:
+      - Paper rule: choose call iff S_T1 > K
+      - Proper rule: choose call iff S_T1 > K * exp(-(r-q)*tau)
+
+    Args:
+        s_t1_realized: Observed stock price at T1.
+        s_t2_realized: Observed stock price at T2.
+        k: Strike.
+        r: Risk-free rate.
+        t2: Total maturity from valuation date.
+        use_proper_rule: Whether to use proper parity threshold.
+        q: Dividend yield (used only if use_proper_rule=True).
+        tau: Remaining time T2-T1 (used only if use_proper_rule=True).
+
+    Returns:
+        Discounted realized payoff at valuation date.
+    """
+    threshold = k * np.exp(-(r - q) * tau) if use_proper_rule else k
+    is_call = s_t1_realized > threshold
+    payoff = max(s_t2_realized - k, 0.0) if is_call else max(k - s_t2_realized, 0.0)
+    return float(np.exp(-r * t2) * payoff)
+
+
+def vix_regime_label(vix_value: float, threshold: float = 30.0) -> str:
+    """
+    Label volatility regime from VIX level.
+
+    Args:
+        vix_value: VIX close level.
+        threshold: Regime split threshold.
+
+    Returns:
+        'high_vol' if VIX > threshold else 'normal_vol'.
+    """
+    return "high_vol" if vix_value > threshold else "normal_vol"
+
+
+def summarize_metrics_by_regime(
+    df: pd.DataFrame,
+    true_col: str,
+    pred_col: str,
+    regime_col: str,
+) -> pd.DataFrame:
+    """
+    Compute MAE/RMSE/MAPE grouped by regime.
+
+    Args:
+        df: DataFrame containing true/pred/regime columns.
+        true_col: Column name of true values.
+        pred_col: Column name of predicted values.
+        regime_col: Regime label column.
+
+    Returns:
+        DataFrame indexed by regime with metrics and counts.
+    """
+    rows = []
+    for regime, sub in df.groupby(regime_col):
+        metrics = compute_error_metrics(sub[true_col].values, sub[pred_col].values)
+        rows.append(
+            {
+                "regime": regime,
+                "count": int(len(sub)),
+                "mae": metrics["mae"],
+                "rmse": metrics["rmse"],
+                "mape": metrics["mape"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values("regime").reset_index(drop=True)
