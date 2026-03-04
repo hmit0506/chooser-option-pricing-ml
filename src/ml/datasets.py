@@ -2,7 +2,7 @@
 Dataset builders and time-series splits for ML models.
 """
 
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from src.models import rubinstein_chooser, realized_proxy_pv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_base_frame(ticker: str = "JPM") -> pd.DataFrame:
+def load_base_frame(ticker: str = "JPM", r_default: float = 0.0015) -> pd.DataFrame:
     """
     Build a base daily DataFrame with aligned JPM, VIX and DGS10 series
     and core engineered features used by Week 4/5 models.
@@ -41,13 +41,23 @@ def load_base_frame(ticker: str = "JPM") -> pd.DataFrame:
     frame["close"] = jpm["Close"].astype(float)
     frame["vix"] = vix["Close"].reindex(frame.index).ffill().bfill().astype(float)
 
-    # risk-free rate from DGS10 (percent -> decimal) or fallback to config-level default later
+    # risk-free rate from DGS10 (percent -> decimal) or fallback default
     if dgs10 is not None:
         dgs = dgs10.iloc[:, 0].reindex(frame.index).ffill().bfill().astype(float)
         frame["r"] = np.where(dgs > 1.0, dgs / 100.0, dgs)
+    else:
+        frame["r"] = r_default
 
     frame["log_ret"] = np.log(frame["close"] / frame["close"].shift(1))
+    frame["ret_5d"] = frame["close"].pct_change(5)
+    frame["ret_21d"] = frame["close"].pct_change(21)
     frame["sigma_252d"] = frame["log_ret"].rolling(252, min_periods=200).std() * np.sqrt(252)
+    frame["sigma_63d"] = frame["log_ret"].rolling(63, min_periods=40).std() * np.sqrt(252)
+    frame["sigma_21d"] = frame["log_ret"].rolling(21, min_periods=15).std() * np.sqrt(252)
+
+    frame["vix_ret_5d"] = frame["vix"].pct_change(5)
+    frame["vix_ret_21d"] = frame["vix"].pct_change(21)
+    frame["rate_mom_21d"] = frame["r"].diff(21)
 
     # VIX-based sentiment proxy
     vix_min = frame["vix"].rolling(252, min_periods=63).min()
@@ -55,13 +65,29 @@ def load_base_frame(ticker: str = "JPM") -> pd.DataFrame:
     spread = (vix_max - vix_min).replace(0, np.nan)
     frame["sentiment_proxy"] = 1 - (frame["vix"] - vix_min) / spread
 
-    frame = frame.dropna(subset=["close", "vix", "sigma_252d"])
+    frame = frame.dropna(
+        subset=[
+            "close",
+            "vix",
+            "r",
+            "ret_5d",
+            "ret_21d",
+            "sigma_21d",
+            "sigma_63d",
+            "sigma_252d",
+            "vix_ret_5d",
+            "vix_ret_21d",
+            "rate_mom_21d",
+            "sentiment_proxy",
+        ]
+    )
     return frame
 
 
 def build_volatility_dataset(
     frame: pd.DataFrame,
     horizon_days: int,
+    feature_cols: List[str] | None = None,
 ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     """
     Build (X, y, dates) for volatility forecasting.
@@ -82,13 +108,55 @@ def build_volatility_dataset(
     df["realized_vol_label"] = realized
     df = df.dropna(subset=["realized_vol_label", "sigma_252d"])
 
-    feature_cols = ["close", "vix", "r", "sigma_252d", "sentiment_proxy"]
+    if feature_cols is None:
+        feature_cols = [
+            "close",
+            "vix",
+            "r",
+            "ret_5d",
+            "ret_21d",
+            "sigma_21d",
+            "sigma_63d",
+            "sigma_252d",
+            "vix_ret_5d",
+            "vix_ret_21d",
+            "rate_mom_21d",
+            "sentiment_proxy",
+        ]
     feature_cols = [c for c in feature_cols if c in df.columns]
 
     X = df[feature_cols].values
     y = df["realized_vol_label"].values
     dates = df.index.to_numpy()
     return pd.DataFrame(X, index=dates, columns=feature_cols), y, dates
+
+
+def build_volatility_multi_horizon_targets(
+    frame: pd.DataFrame,
+    horizons: List[int] | None = None,
+) -> pd.DataFrame:
+    """
+    Build a DataFrame of future realized volatility labels for multiple horizons.
+
+    Example horizons: [21, 63, 126].
+    Output columns are named: realized_vol_h{h}.
+    """
+    if horizons is None:
+        horizons = [21, 63, 126]
+
+    out = pd.DataFrame(index=frame.index.copy())
+    log_ret = frame["log_ret"].values
+
+    for h in horizons:
+        realized = np.full_like(log_ret, np.nan, dtype=float)
+        for i in range(len(frame) - h):
+            window = log_ret[i + 1 : i + 1 + h]
+            if np.any(~np.isfinite(window)):
+                continue
+            realized[i] = window.std() * np.sqrt(252.0)
+        out[f"realized_vol_h{h}"] = realized
+
+    return out
 
 
 def build_pricing_dataset(
@@ -100,12 +168,15 @@ def build_pricing_dataset(
     t2_years: float,
     t1_days: int,
     t2_days: int,
+    feature_cols: List[str] | None = None,
+    target_mode: str = "direct",
+    include_bsm_feature: bool = False,
 ) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
     """
     Build (X, y, dates, bsm_price) for pricing / residual modeling.
 
-    y is proxy-actual PV (discounted realized payoff). BSM prices are computed
-    via Rubinstein closed form using rolling sigma_252d and r_t (or fallback).
+    y is proxy-actual PV (direct) or residual (actual - BSM).
+    BSM prices are computed via Rubinstein closed form.
     """
     df = frame.copy()
     if "r" not in df.columns:
@@ -149,9 +220,17 @@ def build_pricing_dataset(
                 "s_t1": s_t1,
                 "s_t2": s_t2,
                 "sigma_t": sigma_t,
+                "sigma_21d_t": float(df.iloc[i]["sigma_21d"]) if "sigma_21d" in df.columns else np.nan,
+                "sigma_63d_t": float(df.iloc[i]["sigma_63d"]) if "sigma_63d" in df.columns else np.nan,
                 "r_t": r_t,
                 "vix_t": vix_t,
+                "ret_5d_t": float(df.iloc[i]["ret_5d"]) if "ret_5d" in df.columns else np.nan,
+                "ret_21d_t": float(df.iloc[i]["ret_21d"]) if "ret_21d" in df.columns else np.nan,
+                "vix_ret_5d_t": float(df.iloc[i]["vix_ret_5d"]) if "vix_ret_5d" in df.columns else np.nan,
+                "vix_ret_21d_t": float(df.iloc[i]["vix_ret_21d"]) if "vix_ret_21d" in df.columns else np.nan,
+                "rate_mom_21d_t": float(df.iloc[i]["rate_mom_21d"]) if "rate_mom_21d" in df.columns else np.nan,
                 "sentiment_proxy": senti_t,
+                "moneyness_t": s_t / k,
                 "bsm_price": bsm_price,
                 "actual_proxy_pv": actual_proxy,
             }
@@ -159,13 +238,78 @@ def build_pricing_dataset(
 
     bt = pd.DataFrame(rows).set_index("date")
 
-    feature_cols = ["s_t", "vix_t", "r_t", "sigma_t", "sentiment_proxy"]
+    if feature_cols is None:
+        feature_cols = [
+            "s_t",
+            "vix_t",
+            "r_t",
+            "sigma_t",
+            "sigma_21d_t",
+            "sigma_63d_t",
+            "ret_5d_t",
+            "ret_21d_t",
+            "vix_ret_5d_t",
+            "vix_ret_21d_t",
+            "rate_mom_21d_t",
+            "sentiment_proxy",
+            "moneyness_t",
+        ]
+        if include_bsm_feature:
+            feature_cols.append("bsm_price")
+    feature_cols = [c for c in feature_cols if c in bt.columns]
     X = bt[feature_cols].values
-    y = bt["actual_proxy_pv"].values
+    if target_mode == "direct":
+        y = bt["actual_proxy_pv"].values
+    elif target_mode == "residual":
+        y = (bt["actual_proxy_pv"] - bt["bsm_price"]).values
+    else:
+        raise ValueError("target_mode must be 'direct' or 'residual'")
     bsm_prices = bt["bsm_price"].values
     dates_out = bt.index.to_numpy()
 
     return pd.DataFrame(X, index=dates_out, columns=feature_cols), y, dates_out, bsm_prices
+
+
+def build_volatility_sequence_dataset(
+    frame: pd.DataFrame,
+    horizon_days: int = 126,
+    lookback_days: int = 30,
+    sequence_features: List[str] | None = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build sequence dataset for LSTM volatility forecasting.
+
+    X_seq shape: (n_samples, lookback_days, n_features)
+    y shape: (n_samples,) = future realized volatility over horizon_days.
+    """
+    if sequence_features is None:
+        sequence_features = [
+            "log_ret",
+            "vix_ret_5d",
+            "vix_ret_21d",
+            "rate_mom_21d",
+            "sentiment_proxy",
+        ]
+    use_cols = [c for c in sequence_features if c in frame.columns]
+    if len(use_cols) == 0:
+        raise ValueError("No valid sequence features found in frame")
+
+    Xv = frame[use_cols].values
+    rv = frame["log_ret"].values
+    dates = frame.index.to_numpy()
+
+    xs, ys, ds = [], [], []
+    for i in range(lookback_days, len(frame) - horizon_days):
+        hist = Xv[i - lookback_days : i]
+        fut = rv[i : i + horizon_days]
+        if np.any(~np.isfinite(hist)) or np.any(~np.isfinite(fut)):
+            continue
+        label = fut.std() * np.sqrt(252.0)
+        xs.append(hist)
+        ys.append(label)
+        ds.append(dates[i])
+
+    return np.asarray(xs), np.asarray(ys), np.asarray(ds)
 
 
 def time_series_split(
@@ -180,6 +324,9 @@ def time_series_split(
     """
     n = len(dates)
     assert n == len(X) == len(y)
+    if train_frac <= 0 or val_frac <= 0 or (train_frac + val_frac) >= 1:
+        raise ValueError("train_frac and val_frac must be >0 and train_frac+val_frac<1")
+
     idx = np.argsort(dates)
     X_sorted = X.iloc[idx].values if isinstance(X, pd.DataFrame) else X[idx]
     y_sorted = y[idx]
@@ -187,7 +334,6 @@ def time_series_split(
 
     n_train = int(n * train_frac)
     n_val = int(n * val_frac)
-    n_test = n - n_train - n_val
 
     X_train = X_sorted[:n_train]
     y_train = y_sorted[:n_train]
@@ -209,6 +355,8 @@ def time_series_split(
 __all__ = [
     "load_base_frame",
     "build_volatility_dataset",
+    "build_volatility_multi_horizon_targets",
+    "build_volatility_sequence_dataset",
     "build_pricing_dataset",
     "time_series_split",
 ]

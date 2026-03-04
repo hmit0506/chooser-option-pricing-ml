@@ -40,7 +40,7 @@ chooser-option-pricing/
 │   ├── week3_bsm_pricing.ipynb  # BSM chooser pricing (Week 3)
 │   ├── week3_validation.ipynb   # Validation & sensitivity (Week 3)
 │   ├── week4_validation.ipynb   # Baseline BSM error analysis (Week 4)
-│   └── week5_ml_frameworks.ipynb# Initial ML pipelines (Week 5)
+│   └── week5_ml_frameworks.ipynb # Initial ML pipelines (Week 5)
 ├── scripts/                     # Data collection scripts
 │   ├── data_collection/         # Yahoo Finance, FRED collectors
 │   ├── analysis/
@@ -129,6 +129,7 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [BSM benchmark](docs/bsm_benchmark.md) – Official baseline metrics for ML comparison
 - [Week 5 report](docs/weekly_reports/week5_report.md) – ML architecture and pipeline setup
 - [Week 5 ML architecture](docs/week5_ml_architecture.md) – Detailed two-approach ML design
+- [Week 5 ML frameworks notebook](notebooks/week5_ml_frameworks.ipynb) – Initial train/validation/test pipeline demo
 
 ## 📝 Development Notes
 

@@ -36,24 +36,34 @@ The main outcomes are: a clear ML design document, time-series-aware datasets, a
 - **Location:** `src/ml/datasets.py`
 - Implemented:
   - `load_base_frame(...)` – builds aligned JPM/VIX/DGS10 daily frame with:
-    - `close`, `vix`, `r`, `log_ret`, `sigma_252d`, `sentiment_proxy`.
+    - `close`, `vix`, `r`, `log_ret`
+    - return features: `ret_5d`, `ret_21d`
+    - volatility features: `sigma_21d`, `sigma_63d`, `sigma_252d`
+    - market state features: `vix_ret_5d`, `vix_ret_21d`, `rate_mom_21d`, `sentiment_proxy`
   - `build_volatility_dataset(...)` – constructs (X, y, dates) for volatility forecasting using future realized vol labels.
+  - `build_volatility_multi_horizon_targets(...)` – constructs future realized vol labels for multiple horizons (21/63/126).
+  - `build_volatility_sequence_dataset(...)` – constructs sequence tensors for LSTM volatility modeling.
   - `build_pricing_dataset(...)` – constructs (X, y, dates, bsm_price) for pricing / residual modeling using:
     - Rubinstein BSM chooser price.
     - Week 4 `realized_proxy_pv` as target.
+    - direct/residual target modes and optional BSM-feature toggle.
   - `time_series_split(...)` – 70%/15%/15% chronological split (train/val/test) to prevent look-ahead bias.
 
 ### 3. Initial ML Model Frameworks
 
 - **Location:** `src/ml/`
   - `metrics.py` – common regression metrics (`regression_metrics` for MAE/RMSE/R²).
+    - baseline comparison helper (`benchmark_against_baseline`) and improvement percentages.
   - `models_vol.py` – volatility models:
     - `train_rf_vol(...)` – Random Forest baseline.
     - `train_xgb_vol(...)` – XGBoost baseline (optional dependency).
+    - `train_lstm_vol(...)` – LSTM framework (TensorFlow optional dependency).
+    - `train_and_evaluate_vol_model(...)` – unified train/val/test wrapper.
   - `models_pricing.py` – pricing models:
-    - `train_linear_pricing(...)` – Linear/Ridge baseline.
+    - `train_linear_pricing(...)` – Linear/Ridge baseline (scaler pipeline).
     - `train_gbdt_pricing(...)` – Gradient Boosted Trees.
-    - `train_mlp_pricing(...)` – small MLP.
+    - `train_mlp_pricing(...)` – small MLP with early stopping.
+    - `train_and_evaluate_pricing_model(...)` – unified train/val/test wrapper.
   - `__init__.py` – exposes `datasets`, `metrics`, `models_vol`, `models_pricing`.
 
 ### 4. Week 5 ML Framework Notebook
@@ -61,11 +71,13 @@ The main outcomes are: a clear ML design document, time-series-aware datasets, a
 - **Location:** `notebooks/week5_ml_frameworks.ipynb`
 - Demonstrates:
   - Building volatility and pricing datasets from `load_base_frame(...)`.
+  - Building multi-horizon vol labels and LSTM-ready sequence datasets.
   - Applying `time_series_split(...)` for train/val/test.
   - Training:
-    - A Random Forest volatility model (Approach 1 demo).
-    - A Linear pricing model (Approach 2 demo).
-  - Printing basic validation metrics to confirm the pipelines are wired correctly.
+    - Random Forest (+ optional XGBoost) for volatility forecasting.
+    - Linear + GBDT for end-to-end pricing.
+  - Printing validation and test metrics.
+  - Comparing ML test performance against BSM baseline (including improvement %).
 
 ---
 

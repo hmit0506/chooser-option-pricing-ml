@@ -53,8 +53,9 @@ Keep the financial structure of BSM, but replace the constant volatility assumpt
 - **Tree-based:**
   - Random Forest Regressor
   - XGBoost Regressor
-- **Sequence model (planned):**
-  - 1-layer LSTM over sliding windows of returns and VIX (optional extension)
+- **Sequence model (framework-ready):**
+  - 1-layer LSTM over sliding windows of returns/VIX/rate features
+  - Implemented in `train_lstm_vol(...)` (execution depends on TensorFlow availability)
 
 **Pricing step:**
 
@@ -118,9 +119,13 @@ Both approaches rely on a unified **backtest table** at daily frequency:
 Implementation (Week 5 code):
 
 - `src/ml/datasets.py`
-  - `load_base_frame(...)` – constructs the basic aligned DataFrame from raw data.
+  - `load_base_frame(...)` – constructs aligned daily data with multi-window return/vol/rate/VIX features.
   - `build_volatility_dataset(...)` – builds (X, y, dates) for volatility forecasting.
-  - `build_pricing_dataset(...)` – builds (X, y, dates) for pricing / residual modeling.
+  - `build_volatility_multi_horizon_targets(...)` – creates future realized vol labels (e.g., 21/63/126 days).
+  - `build_volatility_sequence_dataset(...)` – builds 3D sequence data for LSTM.
+  - `build_pricing_dataset(...)` – builds (X, y, dates, bsm_price) with:
+    - direct vs residual target mode,
+    - optional inclusion of BSM price as model feature.
 
 ### 3.2 Time-Series Split (70% / 15% / 15%)
 
@@ -139,22 +144,21 @@ This ensures no look-ahead bias in both training and feature construction.
 
 ### 4.1 Volatility Models – `src/ml/models_vol.py`
 
-- `train_rf_vol(...)` – Random Forest:
-  - Inputs: train/val sets from `build_volatility_dataset`
-  - Outputs: fitted model + validation metrics
-- `train_xgb_vol(...)` – XGBoost:
-  - Similar interface, with basic hyperparameters exposed
+- `train_rf_vol(...)` – Random Forest baseline
+- `train_xgb_vol(...)` – XGBoost baseline
+- `train_lstm_vol(...)` – sequence-based LSTM framework
+- `train_and_evaluate_vol_model(...)`:
+  - unified wrapper returning validation + test metrics
 - `evaluate_vol_model(...)`:
-  - Computes MAE / RMSE / R² on a given split
-
-LSTM-based volatility models are planned as a later extension once tree-based baselines are established.
+  - computes MAE / RMSE / R² on a given split
 
 ### 4.2 Pricing Models – `src/ml/models_pricing.py`
 
-- `train_linear_pricing(...)` – Linear / Ridge regression baseline
-- `train_gbdt_pricing(...)` – Tree-based non-linear model
-- `train_mlp_pricing(...)` – Small feed-forward neural network
-- `evaluate_pricing_model(...)` – same metrics as above
+- `train_linear_pricing(...)` – Linear / Ridge baseline (with scaler pipeline)
+- `train_gbdt_pricing(...)` – tree-based non-linear model
+- `train_mlp_pricing(...)` – small MLP with early stopping
+- `train_and_evaluate_pricing_model(...)` – unified val/test wrapper
+- `evaluate_pricing_model(...)` – metrics with optional baseline comparison
 
 All models will be compared against the BSM baseline from Week 4 using the same test set and metrics.
 
@@ -177,9 +181,10 @@ All models will be compared against the BSM baseline from Week 4 using the same 
 - `notebooks/week5_ml_frameworks.ipynb`:
   - Demonstrates:
     - Dataset construction and time-series splits
-    - Training 1–2 models per approach
-    - Baseline comparison table vs BSM
-    - Basic diagnostic plots (pred vs actual, residual histograms)
+    - Volatility models (RF and optional XGB) on val/test
+    - End-to-end pricing models (Linear + GBDT) on val/test
+    - Direct comparison against BSM baseline, including improvement %
+    - Residual-target dataset construction path
 - Updated `docs/bsm_benchmark.md` (later weeks) to include ML vs BSM comparisons.
 
 ---
