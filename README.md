@@ -16,52 +16,67 @@ This project is part of the Avalok Capital Quantitative Research Internship, foc
 
 ```
 chooser-option-pricing/
-├── config/                  # Configuration files
-│   └── model_params.yaml   # BSM model parameters (Week 3)
-├── data/                    # Data storage
-│   ├── raw/                 # Raw data from APIs (gitignored)
-│   │   ├── yahoo_finance/   # JPM, VIX, dividends
-│   │   └── fred/            # Treasury rates (DGS10, etc.)
-│   ├── processed/           # Processed dataset (gitignored)
-│   └── reports/             # Data analysis reports (gitignored)
+├── config/                      # Configuration files
+│   └── model_params.yaml       # BSM model parameters (Week 3)
+├── data/                        # Data storage
+│   ├── raw/                     # Raw data from APIs (gitignored)
+│   │   ├── yahoo_finance/       # JPM, VIX, dividends
+│   │   └── fred/                # Treasury rates (DGS10, etc.)
+│   ├── processed/               # Processed dataset (gitignored)
+│   └── reports/                 # Data analysis reports (gitignored)
 │
-├── docs/                    # Documentation
-│   ├── feature_engineering.md
-│   └── weekly_reports/      # Weekly progress reports
+├── docs/                        # Documentation
+│   ├── feature_engineering.md   # Week 2 feature definitions
+│   ├── week4_validation_report.md
+│   ├── bsm_benchmark.md
+│   ├── week5_ml_architecture.md
+│   └── weekly_reports/          # Weekly progress reports (week2–week5)
 │
-├── .github/workflows/       # CI/CD
-│   └── preprocessing.yml   # Data collection + preprocessing pipeline
+├── .github/workflows/           # CI/CD
+│   └── preprocessing.yml       # Data collection + preprocessing pipeline
 │
-├── models/                  # Trained model files (gitignored)
-├── notebooks/               # Jupyter notebooks
-│   ├── week3_bsm_pricing.ipynb   # BSM chooser pricing (Week 3)
-│   └── week3_validation.ipynb    # Validation & sensitivity (Week 3)
-├── scripts/                 # Data collection scripts
-│   ├── data_collection/    # Yahoo Finance, FRED collectors
+├── models/                      # Trained model files (gitignored)
+├── notebooks/                   # Jupyter notebooks
+│   ├── week3_bsm_pricing.ipynb  # BSM chooser pricing (Week 3)
+│   ├── week3_validation.ipynb   # Validation & sensitivity (Week 3)
+│   ├── week4_validation.ipynb   # Baseline BSM error analysis (Week 4)
+│   └── week5_ml_frameworks.ipynb# Initial ML pipelines (Week 5)
+├── scripts/                     # Data collection scripts
+│   ├── data_collection/         # Yahoo Finance, FRED collectors
 │   ├── analysis/
 │   └── utils/
 │
-├── src/                     # Core pipeline code
-│   ├── preprocess.py       # Main preprocessing pipeline (Week 2)
-│   ├── data/               # Data loaders
-│   ├── features/           # Feature engineering
-│   └── models/             # BSM chooser pricing module (Week 3)
+├── src/                         # Core pipeline code
+│   ├── preprocess.py            # Main preprocessing pipeline (Week 2)
+│   ├── data/                    # Data loaders
+│   ├── features/                # Feature engineering
+│   ├── models/                  # BSM chooser pricing module (Week 3)
+│   └── ml/                      # ML datasets, metrics, and model wrappers (Week 5)
 │
-├── tests/                   # Unit tests
-├── .env.example             # API key template
+├── tests/                       # Unit tests
+├── .env.example                 # API key template
 ├── requirements.txt
 └── README.md
 ```
 
 ### Directory Descriptions
 
-- **src/models/**: BSM chooser option pricing — Monte Carlo simulation + Rubinstein (1991) analytic formula
-- **src/data/**, **src/features/**, **src/preprocess.py**: Data loading, feature engineering, preprocessing pipeline
-- **config/model_params.yaml**: Paper parameters (S0, K, r, σ, q, T1, T2)
-- **notebooks/**: Week 3 BSM pricing and validation notebooks with sensitivity analysis
-- **scripts/data_collection/**: Fetches raw data from Yahoo Finance (no key) and FRED (key required)
-- **data/raw/**: Raw JPM OHLCV, VIX, dividends, Treasury rates
-- **data/processed/**: Output of preprocessing: 12+ features, parquet + CSV
+- **src/preprocess.py**, **src/data/**, **src/features/**  
+  Data loading, cleaning, feature engineering, and preprocessing pipeline (Week 2).
+- **src/models/**  
+  BSM chooser option pricing — Monte Carlo simulation + Rubinstein (1991) analytic formula (Week 3).
+- **src/ml/**  
+  ML utilities for volatility forecasting and end-to-end pricing (datasets, metrics, RF/XGBoost/LR/GBDT/MLP wrappers; Week 5).
+- **config/model_params.yaml**  
+  Paper parameters (S0, K, r, σ, q, T1, T2) used in BSM replication.
+- **notebooks/**  
+  Week 3–5 Jupyter notebooks for BSM pricing, validation (Table 3, sensitivity, convergence), baseline evaluation, and initial ML pipelines.
+- **scripts/data_collection/**  
+  Fetches raw data from Yahoo Finance (no key) and FRED (key required).
+- **data/raw/**  
+  Raw JPM OHLCV, VIX, dividends, Treasury rates (gitignored).
+- **data/processed/**  
+  Output of preprocessing: 12+ engineered features, saved as parquet/CSV (gitignored).
 
 ## 🚀 Getting Started
 
@@ -112,6 +127,8 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 4 report](docs/weekly_reports/week4_report.md) – Baseline evaluation weekly summary
 - [Week 4 validation report](docs/week4_validation_report.md) – Baseline error metrics and limitations
 - [BSM benchmark](docs/bsm_benchmark.md) – Official baseline metrics for ML comparison
+- [Week 5 report](docs/weekly_reports/week5_report.md) – ML architecture and pipeline setup
+- [Week 5 ML architecture](docs/week5_ml_architecture.md) – Detailed two-approach ML design
 
 ## 📝 Development Notes
 
