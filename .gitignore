@@ -13,7 +13,6 @@ ENV/
 # Data files (DO NOT COMMIT)
 data/raw/
 data/processed/
-data/reports/
 # Allow .gitkeep files to preserve directory structure
 !data/raw/.gitkeep
 !data/processed/.gitkeep
@@ -24,6 +23,15 @@ data/reports/
 *.hdf5
 *.xlsx
 *.xls
+
+# Keep Week 6 report artifacts tracked
+!data/reports/week6/
+!data/reports/week6/week6_results.json
+!data/reports/week6/model_comparison.csv
+!data/reports/week6/lime_explanation_sample0.html
+!data/reports/week6/plots/
+!data/reports/week6/plots/*.png
+data/reports/api_tests/
 
 # Environment variables (NEVER COMMIT)
 .env

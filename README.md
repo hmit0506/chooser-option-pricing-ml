@@ -33,21 +33,22 @@ chooser-option-pricing/
 │   ├── week4_validation_report.md
 │   ├── bsm_benchmark.md
 │   ├── week5_ml_architecture.md
-│   └── weekly_reports/          # Weekly progress reports (week2–week5)
+│   ├── week6_comparative_analysis.md
+│   └── weekly_reports/          # Weekly progress reports
 │
 ├── .github/workflows/           # CI/CD
 │   └── preprocessing.yml       # Data collection + preprocessing pipeline
 │
-├── models/                      # Trained model files (gitignored)
+├── models/                      # Trained model files
 ├── notebooks/                   # Jupyter notebooks
 │   ├── week3_bsm_pricing.ipynb  # BSM chooser pricing (Week 3)
 │   ├── week3_validation.ipynb   # Validation & sensitivity (Week 3)
 │   ├── week4_validation.ipynb   # Baseline BSM error analysis (Week 4)
 │   └── week5_ml_frameworks.ipynb # Initial ML pipelines (Week 5)
-├── scripts/                     # Data collection scripts
+├── scripts/                     # Automation scripts
 │   ├── data_collection/         # Yahoo Finance, FRED collectors
-│   ├── analysis/
-│   └── utils/
+│   └── ml/
+│       └── week6_train_eval.py  # Week 6 tuning/evaluation/interpretability
 │
 ├── src/                         # Core pipeline code
 │   ├── preprocess.py            # Main preprocessing pipeline (Week 2)
@@ -137,11 +138,13 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 5 report](docs/weekly_reports/week5_report.md) – ML architecture and pipeline setup
 - [Week 5 ML architecture](docs/week5_ml_architecture.md) – Detailed two-approach ML design
 - [Week 5 ML frameworks notebook](notebooks/week5_ml_frameworks.ipynb) – Initial train/validation/test pipeline demo
+- [Week 6 report](docs/weekly_reports/week6_report.md) – Tuning, final evaluation, and interpretability completion
+- [Week 6 comparative analysis](docs/week6_comparative_analysis.md) – Final tuning, ML vs BSM, SHAP/LIME outputs
 
 ### Current Phase
 
-- Week 5: Initial ML architecture and pipeline scaffolding
 - Week 6: Hyperparameter optimization, final model evaluation, and SHAP/LIME analysis
+- Next: package selected model for deployment interface (Streamlit/FastAPI)
 
 ## 📝 Development Notes
 
