@@ -12,6 +12,9 @@ This project is part of the Avalok Capital Quantitative Research Internship, foc
 3. Build a production-ready pricing tool with real-time capabilities
 4. Compare model performance against actual CME transaction prices
 
+> Note: when direct chooser transaction data is unavailable, the project uses a
+> historical realized proxy benchmark for reproducible validation.
+
 ## 📁 Project Structure
 
 ```
@@ -84,6 +87,10 @@ chooser-option-pricing/
 
 - Python 3.8+
 - pip
+- Optional ML dependencies for extended experiments:
+  - `xgboost` (tree boosting)
+  - `tensorflow` (LSTM)
+  - `shap` / `lime` (interpretability, Week 6)
 
 ### Installation
 
@@ -130,6 +137,11 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 5 report](docs/weekly_reports/week5_report.md) – ML architecture and pipeline setup
 - [Week 5 ML architecture](docs/week5_ml_architecture.md) – Detailed two-approach ML design
 - [Week 5 ML frameworks notebook](notebooks/week5_ml_frameworks.ipynb) – Initial train/validation/test pipeline demo
+
+### Current Phase
+
+- Week 5: Initial ML architecture and pipeline scaffolding
+- Week 6: Hyperparameter optimization, final model evaluation, and SHAP/LIME analysis
 
 ## 📝 Development Notes
 

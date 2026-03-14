@@ -91,6 +91,27 @@ The main outcomes are: a clear ML design document, time-series-aware datasets, a
 
 ---
 
+## Teacher Feedback Captured
+
+Week 5 planning explicitly records the three advisor concerns:
+
+1. **Applicability boundaries of two approaches**
+   - Compare approach performance by volatility regime, moneyness, and maturity buckets.
+2. **Handling non-stationarity in sequence models**
+   - Keep return-based sequence features and strict chronological setup; add walk-forward checks in Week 6.
+3. **Overfitting prevention**
+   - Use early stopping/regularization, validation-test gap checks, and controlled hyperparameter search.
+
+---
+
+## Known Gaps at End of Week 5
+
+- Hyperparameter tuning is not finalized yet (Week 6 scope).
+- Final test-set model ranking vs BSM is not locked yet.
+- SHAP/LIME interpretability outputs are not generated yet.
+
+---
+
 ## Next Steps (Week 6)
 
 ### 1. Hyperparameter Optimization
@@ -116,6 +137,18 @@ The main outcomes are: a clear ML design document, time-series-aware datasets, a
 - Integrate SHAP / LIME for selected models (e.g., XGBoost / GBDT / MLP) to:
   - Identify key drivers (VIX dynamics, realized volatility, rate level, etc.).
   - Confirm whether ML models are learning economically sensible patterns.
+
+---
+
+## Week 6 Acceptance Criteria
+
+Week 6 is considered complete when the following are delivered:
+
+1. Tuned final models for both approaches (saved artifacts).
+2. Final test-set comparison table (ML vs BSM) across MAE/RMSE/R².
+3. Regime-wise comparison summary (high/normal volatility, sentiment splits).
+4. SHAP/LIME feature-importance visuals and interpretation notes.
+5. Updated benchmark documentation with final selected "primary" model rationale.
 
 ---
 

@@ -189,7 +189,49 @@ All models will be compared against the BSM baseline from Week 4 using the same 
 
 ---
 
-## 6. Implementation Summary
+## 6. Model Selection Criteria (for Week 6 decision)
+
+Final model selection will be based on:
+
+1. **Primary accuracy on test set**
+   - MAE, RMSE, R²
+2. **Regime robustness**
+   - Stability across high/normal VIX and sentiment regimes
+3. **Generalization consistency**
+   - Comparable performance across validation and test (no overfitting drift)
+4. **Interpretability and deployment practicality**
+   - Explainability quality (SHAP/LIME)
+   - Inference complexity and maintenance cost
+
+---
+
+## 7. Non-Stationarity Handling Strategy
+
+To handle financial time-series non-stationarity:
+
+- Use return/volatility/momentum features instead of raw levels where possible.
+- Keep strict chronological splits (70/15/15) without shuffling.
+- Use rolling-window derived features and future-only labels.
+- Evaluate model behavior by volatility/sentiment regimes.
+- (Week 6) add walk-forward style validation for robustness checks.
+
+---
+
+## 8. Overfitting Control Strategy
+
+Current and planned controls include:
+
+- Time-series split to prevent leakage.
+- Model-level regularization:
+  - Tree depth and learning-rate constraints
+  - Early stopping for MLP/LSTM
+  - Ridge option for linear baseline
+- Consistent random seeds for reproducibility.
+- Validation-to-test gap monitoring as a guardrail.
+
+---
+
+## 9. Implementation Summary
 
 By the end of Week 5, the codebase will contain:
 
