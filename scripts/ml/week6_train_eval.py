@@ -46,6 +46,58 @@ try:
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError("shap is required for Week 6 interpretability outputs") from exc
 
+try:
+    import seaborn as sns
+except ImportError:  # pragma: no cover
+    sns = None
+
+
+# Documented search spaces (must match param_grid / param_distributions below).
+HYPERPARAM_SEARCH_SPACES: Dict[str, Any] = {
+    "cv": {"class": "TimeSeriesSplit", "n_splits": 4},
+    "scoring": "neg_mean_absolute_error (MAE minimized)",
+    "rf_vol_grid": {
+        "n_estimators": [200, 400],
+        "max_depth": [4, 6, None],
+        "min_samples_leaf": [1, 3, 8],
+    },
+    "xgb_vol_random": {
+        "n_iter": 12,
+        "param_distributions": {
+            "n_estimators": [250, 400, 600],
+            "max_depth": [3, 4, 5],
+            "learning_rate": [0.02, 0.05, 0.08],
+            "subsample": [0.7, 0.85, 1.0],
+            "colsample_bytree": [0.7, 0.85, 1.0],
+        },
+    },
+    "ridge_grid": {"model__alpha": [0.1, 1.0, 5.0, 10.0]},
+    "gbdt_random": {
+        "n_iter": 12,
+        "param_distributions": {
+            "n_estimators": [200, 350, 500],
+            "max_depth": [2, 3, 4],
+            "learning_rate": [0.02, 0.05, 0.08],
+            "subsample": [0.7, 0.85, 1.0],
+            "min_samples_leaf": [1, 3, 8],
+        },
+    },
+    "mlp_random": {
+        "n_iter": 9,
+        "param_distributions": {
+            "model__hidden_layer_sizes": [(64, 32), (128, 64), (128, 64, 32)],
+            "model__alpha": [1e-5, 1e-4, 1e-3],
+            "model__learning_rate_init": [1e-4, 5e-4, 1e-3],
+        },
+        "fixed": {
+            "model__max_iter": 800,
+            "model__early_stopping": True,
+            "model__validation_fraction": 0.1,
+            "model__n_iter_no_change": 20,
+        },
+    },
+}
+
 
 CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yaml"
 MODELS_DIR = PROJECT_ROOT / "models" / "week6"
@@ -98,7 +150,101 @@ def make_ts_cv(n_splits: int = 4) -> TimeSeriesSplit:
     return TimeSeriesSplit(n_splits=n_splits)
 
 
-def tune_rf_vol(X: np.ndarray, y: np.ndarray, random_state: int = 42) -> RandomForestRegressor:
+def three_split_metrics(
+    model: Any,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+) -> Dict[str, Any]:
+    """
+    Return MAE/RMSE/R2 on train, val, test plus simple generalization gaps.
+    """
+    y_train_p = np.asarray(model.predict(X_train)).reshape(-1)
+    y_val_p = np.asarray(model.predict(X_val)).reshape(-1)
+    y_test_p = np.asarray(model.predict(X_test)).reshape(-1)
+    tr = regression_metrics(y_train, y_train_p)
+    va = regression_metrics(y_val, y_val_p)
+    te = regression_metrics(y_test, y_test_p)
+    return {
+        "train": tr,
+        "val": va,
+        "test": te,
+        "gap_val_minus_train_mae": float(va["mae"] - tr["mae"]),
+        "gap_test_minus_val_mae": float(te["mae"] - va["mae"]),
+    }
+
+
+def compute_vif_from_matrix(X: np.ndarray, feature_names: list[str]) -> pd.DataFrame:
+    """
+    Variance Inflation Factor per column: VIF_j = 1 / (1 - R^2_j)
+    where R^2_j is from OLS of column j on all other columns (+ intercept).
+    """
+    X = np.asarray(X, dtype=float)
+    n, p = X.shape
+    rows = []
+    for j in range(p):
+        y_col = X[:, j]
+        X_others = np.delete(X, j, axis=1)
+        X_aug = np.column_stack([np.ones(n), X_others])
+        beta, _, rank, _ = np.linalg.lstsq(X_aug, y_col, rcond=None)
+        if rank < X_aug.shape[1]:
+            r2 = 0.99
+        else:
+            y_hat = X_aug @ beta
+            ss_res = float(np.sum((y_col - y_hat) ** 2))
+            ss_tot = float(np.sum((y_col - np.mean(y_col)) ** 2))
+            r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+        r2 = min(max(r2, 0.0), 0.999999)
+        vif = 1.0 / (1.0 - r2)
+        rows.append({"feature": feature_names[j], "vif": float(vif), "r2_others": float(r2)})
+    return pd.DataFrame(rows).sort_values("vif", ascending=False).reset_index(drop=True)
+
+
+def save_collinearity_report(
+    df: pd.DataFrame,
+    name: str,
+    corr_path: Path,
+    heatmap_path: Path,
+    vif_path: Path,
+    vif_exclude_cols: list[str] | None = None,
+) -> None:
+    """
+    Pearson correlation matrix + heatmap + VIF for numeric columns (drop NaN rows).
+
+    vif_exclude_cols: columns to drop only for VIF (e.g. moneyness = s_t / K is
+    perfectly collinear with spot s_t).
+    """
+    num = df.select_dtypes(include=[np.number]).dropna()
+    if num.shape[1] < 2:
+        return
+    corr = num.corr(method="pearson")
+    corr.to_csv(corr_path)
+    if sns is not None:
+        plt.figure(figsize=(max(8, num.shape[1] * 0.5), max(6, num.shape[1] * 0.45)))
+        annot = len(corr) <= 12
+        sns.heatmap(
+            corr,
+            annot=annot,
+            fmt=".2f" if annot else None,
+            cmap="coolwarm",
+            center=0,
+            square=True,
+        )
+        plt.title(f"Feature correlation ({name})")
+        plt.tight_layout()
+        plt.savefig(heatmap_path, dpi=160)
+        plt.close()
+    num_vif = num.drop(columns=[c for c in (vif_exclude_cols or []) if c in num.columns], errors="ignore")
+    if num_vif.shape[1] < 2:
+        return
+    vif_df = compute_vif_from_matrix(num_vif.values, list(num_vif.columns))
+    vif_df.to_csv(vif_path, index=False)
+
+
+def tune_rf_vol(X: np.ndarray, y: np.ndarray, random_state: int = 42):
     cv = make_ts_cv()
     scoring = make_scorer(mean_absolute_error, greater_is_better=False)
     grid = GridSearchCV(
@@ -114,7 +260,7 @@ def tune_rf_vol(X: np.ndarray, y: np.ndarray, random_state: int = 42) -> RandomF
         refit=True,
     )
     grid.fit(X, y)
-    return grid.best_estimator_
+    return grid.best_estimator_, grid
 
 
 def tune_xgb_vol(X: np.ndarray, y: np.ndarray, random_state: int = 42):
@@ -147,10 +293,10 @@ def tune_xgb_vol(X: np.ndarray, y: np.ndarray, random_state: int = 42):
         refit=True,
     )
     search.fit(X, y)
-    return search.best_estimator_
+    return search.best_estimator_, search
 
 
-def tune_pricing_models(X: np.ndarray, y: np.ndarray, random_state: int = 42) -> Dict[str, Any]:
+def tune_pricing_models(X: np.ndarray, y: np.ndarray, random_state: int = 42):
     cv = make_ts_cv()
     scoring = make_scorer(mean_absolute_error, greater_is_better=False)
 
@@ -214,11 +360,37 @@ def tune_pricing_models(X: np.ndarray, y: np.ndarray, random_state: int = 42) ->
     )
     mlp_search.fit(X, y)
 
-    return {
+    models = {
         "ridge": ridge_grid.best_estimator_,
         "gbdt": gbdt_search.best_estimator_,
         "mlp": mlp_search.best_estimator_,
     }
+    searches = {"ridge": ridge_grid, "gbdt": gbdt_search, "mlp": mlp_search}
+    return models, searches
+
+
+def approach1_pricing_metrics_for_vol_split(
+    model: Any,
+    X_split: np.ndarray,
+    d_split: np.ndarray,
+    pricing_df: pd.DataFrame,
+    k: float,
+    q: float,
+    t1: float,
+    t2: float,
+) -> Dict[str, float]:
+    """BSM repricing with predicted vol on one time split (train/val/test)."""
+    dates = pd.to_datetime(d_split)
+    vol_series = pd.Series(model.predict(X_split), index=dates)
+    price_pred, out_dates = price_with_predicted_vol(pricing_df, vol_series, k, q, t1, t2)
+    if len(out_dates) == 0:
+        return {"mae": float("nan"), "rmse": float("nan"), "r2": float("nan"), "n_samples": 0}
+    eval_df = pricing_df.reindex(pd.to_datetime(out_dates)).dropna(subset=["target", "bsm_price"])
+    y_true = eval_df["target"].values
+    y_pred = price_pred[: len(eval_df)]
+    m = regression_metrics(y_true, y_pred)
+    m["n_samples"] = int(len(y_true))
+    return m
 
 
 def price_with_predicted_vol(
@@ -255,6 +427,23 @@ def price_with_predicted_vol(
 def save_pickle(obj: Any, path: Path) -> None:
     with open(path, "wb") as f:
         pickle.dump(obj, f)
+
+
+def json_safe(obj: Any) -> Any:
+    """Convert numpy/sklearn types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(x) for x in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
 
 
 def make_comparison_plot(df: pd.DataFrame, path: Path) -> None:
@@ -342,11 +531,32 @@ def main() -> None:
     X_vol_trainval = np.vstack([vol_split.X_train, vol_split.X_val])
     y_vol_trainval = np.concatenate([vol_split.y_train, vol_split.y_val])
 
-    rf_vol = tune_rf_vol(X_vol_trainval, y_vol_trainval)
-    xgb_vol = tune_xgb_vol(X_vol_trainval, y_vol_trainval)
+    rf_vol, rf_vol_search = tune_rf_vol(X_vol_trainval, y_vol_trainval)
+    xgb_vol, xgb_vol_search = tune_xgb_vol(X_vol_trainval, y_vol_trainval)
 
     rf_vol_test_metrics = regression_metrics(vol_split.y_test, rf_vol.predict(vol_split.X_test))
     xgb_vol_test_metrics = regression_metrics(vol_split.y_test, xgb_vol.predict(vol_split.X_test))
+
+    vol_models_three_split = {
+        "rf_vol": three_split_metrics(
+            rf_vol,
+            vol_split.X_train,
+            vol_split.y_train,
+            vol_split.X_val,
+            vol_split.y_val,
+            vol_split.X_test,
+            vol_split.y_test,
+        ),
+        "xgb_vol": three_split_metrics(
+            xgb_vol,
+            vol_split.X_train,
+            vol_split.y_train,
+            vol_split.X_val,
+            vol_split.y_val,
+            vol_split.X_test,
+            vol_split.y_test,
+        ),
+    }
 
     vol_test_dates = pd.to_datetime(vol_split.d_test)
     rf_vol_pred_series = pd.Series(rf_vol.predict(vol_split.X_test), index=vol_test_dates)
@@ -368,6 +578,29 @@ def main() -> None:
     pricing_df["target"] = y_price
     pricing_df["bsm_price"] = bsm_price
     pricing_df.index = pd.to_datetime(pricing_df.index)
+
+    approach1_rf_vol_price_splits = {
+        "train": approach1_pricing_metrics_for_vol_split(
+            rf_vol, vol_split.X_train, vol_split.d_train, pricing_df, k, q, t1, t2
+        ),
+        "val": approach1_pricing_metrics_for_vol_split(
+            rf_vol, vol_split.X_val, vol_split.d_val, pricing_df, k, q, t1, t2
+        ),
+        "test": approach1_pricing_metrics_for_vol_split(
+            rf_vol, vol_split.X_test, vol_split.d_test, pricing_df, k, q, t1, t2
+        ),
+    }
+    approach1_xgb_vol_price_splits = {
+        "train": approach1_pricing_metrics_for_vol_split(
+            xgb_vol, vol_split.X_train, vol_split.d_train, pricing_df, k, q, t1, t2
+        ),
+        "val": approach1_pricing_metrics_for_vol_split(
+            xgb_vol, vol_split.X_val, vol_split.d_val, pricing_df, k, q, t1, t2
+        ),
+        "test": approach1_pricing_metrics_for_vol_split(
+            xgb_vol, vol_split.X_test, vol_split.d_test, pricing_df, k, q, t1, t2
+        ),
+    }
 
     rf_price_pred, rf_dates = price_with_predicted_vol(pricing_df, rf_vol_pred_series, k, q, t1, t2)
     xgb_price_pred, xgb_dates = price_with_predicted_vol(pricing_df, xgb_vol_pred_series, k, q, t1, t2)
@@ -405,17 +638,43 @@ def main() -> None:
     n_trainval = len(price_split.y_train) + len(price_split.y_val)
     y_base_test = bsm_price_full[n_trainval:]
 
+    save_collinearity_report(
+        X_vol_df,
+        "volatility_model_features",
+        REPORT_DIR / "corr_volatility_features.csv",
+        PLOTS_DIR / "corr_volatility_features_heatmap.png",
+        REPORT_DIR / "vif_volatility_features.csv",
+    )
+    save_collinearity_report(
+        X_price_df,
+        "pricing_model_features",
+        REPORT_DIR / "corr_pricing_features.csv",
+        PLOTS_DIR / "corr_pricing_features_heatmap.png",
+        REPORT_DIR / "vif_pricing_features.csv",
+        vif_exclude_cols=["moneyness_t"],
+    )
+
     X_price_trainval = np.vstack([price_split.X_train, price_split.X_val])
     y_price_trainval = np.concatenate([price_split.y_train, price_split.y_val])
-    tuned_pricing = tune_pricing_models(X_price_trainval, y_price_trainval)
+    tuned_pricing, pricing_searches = tune_pricing_models(X_price_trainval, y_price_trainval)
 
     approach2_metrics: Dict[str, Dict[str, float]] = {}
+    approach2_three_split: Dict[str, Dict[str, Any]] = {}
     for name, model in tuned_pricing.items():
         y_pred_test = model.predict(price_split.X_test)
         approach2_metrics[name] = benchmark_against_baseline(
             price_split.y_test,
             y_pred_test,
             y_baseline=y_base_test,
+        )
+        approach2_three_split[name] = three_split_metrics(
+            model,
+            price_split.X_train,
+            price_split.y_train,
+            price_split.X_val,
+            price_split.y_val,
+            price_split.X_test,
+            price_split.y_test,
         )
 
     # Primary model choices
@@ -468,6 +727,14 @@ def main() -> None:
     comp_df.to_csv(comp_csv_path, index=False)
     make_comparison_plot(comp_df[["model", "mae", "rmse"]], PLOTS_DIR / "model_error_comparison.png")
 
+    best_params = {
+        "rf_vol": rf_vol_search.best_params_,
+        "xgb_vol": xgb_vol_search.best_params_,
+        "ridge": pricing_searches["ridge"].best_params_,
+        "gbdt": pricing_searches["gbdt"].best_params_,
+        "mlp": pricing_searches["mlp"].best_params_,
+    }
+
     results = {
         "config": {"k": k, "q": q, "t1": t1, "t2": t2, "t1_days": t1_days, "t2_days": t2_days},
         "sample_sizes": {
@@ -477,6 +744,14 @@ def main() -> None:
             "pricing_train": int(len(price_split.y_train)),
             "pricing_val": int(len(price_split.y_val)),
             "pricing_test": int(len(price_split.y_test)),
+        },
+        "hyperparameter_search_spaces": HYPERPARAM_SEARCH_SPACES,
+        "best_hyperparameters": json_safe(best_params),
+        "overfitting_diagnostics": {
+            "volatility_models": vol_models_three_split,
+            "approach1_rf_vol_bsm_repricing": approach1_rf_vol_price_splits,
+            "approach1_xgb_vol_bsm_repricing": approach1_xgb_vol_price_splits,
+            "approach2_end_to_end": approach2_three_split,
         },
         "approach1": {
             "vol_model_test_metrics": {
@@ -493,6 +768,18 @@ def main() -> None:
             "pricing_test_metrics": approach2_metrics,
             "best_pricing_model": best_pricing_name,
         },
+        "collinearity": {
+            "volatility_features": {
+                "correlation_csv": "data/reports/week6/corr_volatility_features.csv",
+                "heatmap_png": "data/reports/week6/plots/corr_volatility_features_heatmap.png",
+                "vif_csv": "data/reports/week6/vif_volatility_features.csv",
+            },
+            "pricing_features": {
+                "correlation_csv": "data/reports/week6/corr_pricing_features.csv",
+                "heatmap_png": "data/reports/week6/plots/corr_pricing_features_heatmap.png",
+                "vif_csv": "data/reports/week6/vif_pricing_features.csv",
+            },
+        },
         "artifacts": {
             "best_vol_model": str((MODELS_DIR / f"best_vol_model_{best_vol_name}.pkl").relative_to(PROJECT_ROOT)),
             "best_pricing_model": str(
@@ -505,8 +792,19 @@ def main() -> None:
             "lime_html": lime_path,
         },
     }
+    hp_path = REPORT_DIR / "hyperparameter_search_spaces.json"
+    with open(hp_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "documented_search_spaces": HYPERPARAM_SEARCH_SPACES,
+                "best_params_from_search": json_safe(best_params),
+            },
+            f,
+            indent=2,
+        )
+
     with open(SUMMARY_JSON, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
+        json.dump(json_safe(results), f, indent=2)
 
     print("=" * 70)
     print("WEEK 6 TRAINING COMPLETED")

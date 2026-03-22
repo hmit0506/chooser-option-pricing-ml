@@ -26,8 +26,10 @@ data/processed/
 
 # Keep Week 6 report artifacts tracked
 !data/reports/week6/
+!data/reports/week6/*.csv
 !data/reports/week6/week6_results.json
 !data/reports/week6/model_comparison.csv
+!data/reports/week6/hyperparameter_search_spaces.json
 !data/reports/week6/lime_explanation_sample0.html
 !data/reports/week6/plots/
 !data/reports/week6/plots/*.png

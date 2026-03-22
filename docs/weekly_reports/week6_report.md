@@ -40,6 +40,12 @@ This week completed the Week 6 milestone by running time-series-aware hyperparam
   - `data/reports/week6/plots/shap_bar.png`
   - `data/reports/week6/lime_explanation_sample0.html`
 
+### 5. Follow-up diagnostics (teacher Q&A)
+
+- **Train / val / test error tables** for end-to-end pricing models (Ridge, GBDT, MLP) and MAE generalization gaps.
+- **Documented hyperparameter grids** + exported **best parameters** to `data/reports/week6/hyperparameter_search_spaces.json`.
+- **Collinearity checks**: Pearson correlation heatmaps + VIF tables for volatility and pricing feature matrices (pricing VIF excludes redundant `moneyness_t` vs `s_t`).
+
 ---
 
 ## Deliverables Status
