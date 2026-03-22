@@ -1,0 +1,5 @@
+scenario,chooser_price,pct_vs_baseline,description
+baseline,29.129924019683905,0.0,"Rubinstein closed-form, config / last-row inputs"
+vol_spike_50pct,43.44961462981393,49.1580087900463,sigma multiplied by 1.5 (+50% volatility)
+rate_hike_200bps,29.167832081085884,0.13013443281336026,risk-free rate +0.02 (+200 bps absolute)
+vol_spike_and_rate_hike,43.238139483698326,48.43203660428742,both shocks applied simultaneously

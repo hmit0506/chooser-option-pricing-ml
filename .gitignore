@@ -35,6 +35,13 @@ data/processed/
 !data/reports/week6/plots/*.png
 data/reports/api_tests/
 
+# Week 7 sensitivity / analysis artifacts (tracked)
+!data/reports/week7/
+!data/reports/week7/*.csv
+!data/reports/week7/*.json
+!data/reports/week7/plots/
+!data/reports/week7/plots/*.png
+
 # Environment variables (NEVER COMMIT)
 .env
 .env.local

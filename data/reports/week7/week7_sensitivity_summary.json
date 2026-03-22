@@ -1,0 +1,16 @@
+{
+  "gbdt_test_metrics": {
+    "mae": 35.78938599272668,
+    "rmse": 43.0923652725402
+  },
+  "shap_background_size": 400,
+  "shap_explain_size": 197,
+  "mean_abs_shap_vix_t": 0.4401288629353619,
+  "mean_abs_shap_sentiment": 0.7144622516561164,
+  "artifacts": {
+    "shap_mean_abs_impact": "data/reports/week7/shap_mean_abs_impact.csv",
+    "shap_vix_sentiment": "data/reports/week7/shap_vix_sentiment_highlight.csv",
+    "extreme_last_row": "data/reports/week7/extreme_scenarios_last_row.csv",
+    "extreme_config": "data/reports/week7/extreme_scenarios_config_params.csv"
+  }
+}

@@ -34,7 +34,14 @@ chooser-option-pricing/
 │   ├── bsm_benchmark.md
 │   ├── week5_ml_architecture.md
 │   ├── week6_comparative_analysis.md
+│   ├── week7_sensitivity_analysis.md
+│   ├── week7_project_timeline.md
 │   └── weekly_reports/          # Weekly progress reports
+│
+├── app/                         # Week 7+ tooling
+│   ├── streamlit_app.py         # Prototype UI
+│   └── api/
+│       └── main.py              # FastAPI service
 │
 ├── .github/workflows/           # CI/CD
 │   └── preprocessing.yml       # Data collection + preprocessing pipeline
@@ -47,12 +54,14 @@ chooser-option-pricing/
 │   └── week5_ml_frameworks.ipynb # Initial ML pipelines (Week 5)
 ├── scripts/                     # Automation scripts
 │   ├── data_collection/         # Yahoo Finance, FRED collectors
+│   ├── analysis/
+│   │   └── week7_sensitivity.py # Week 7 SHAP + extreme scenarios
 │   └── ml/
 │       └── week6_train_eval.py  # Week 6 tuning/evaluation/interpretability
 │
 ├── src/                         # Core pipeline code
 │   ├── preprocess.py            # Main preprocessing pipeline (Week 2)
-│   ├── data/                    # Data loaders
+│   ├── data/                    # Data loaders + market_updater (Week 7)
 │   ├── features/                # Feature engineering
 │   ├── models/                  # BSM chooser pricing module (Week 3)
 │   └── ml/                      # ML datasets, metrics, and model wrappers (Week 5)
@@ -77,6 +86,12 @@ chooser-option-pricing/
   Week 3–5 Jupyter notebooks for BSM pricing, validation (Table 3, sensitivity, convergence), baseline evaluation, and initial ML pipelines.
 - **scripts/data_collection/**  
   Fetches raw data from Yahoo Finance (no key) and FRED (key required).
+- **scripts/analysis/**  
+  Week 7 sensitivity (SHAP + stress scenarios).
+- **app/**  
+  Streamlit prototype and FastAPI skeleton for pricing and data refresh.
+- **src/data/market_updater.py**  
+  Near-real-time Yahoo merge into `data/raw/yahoo_finance/` for UI/API refresh.
 - **data/raw/**  
   Raw JPM OHLCV, VIX, dividends, Treasury rates (gitignored).
 - **data/processed/**  
@@ -123,6 +138,27 @@ pip install -r requirements.txt
    ```
    Produces `data/processed/processed_dataset.parquet` and `.csv` with 12+ engineered features.
 
+3. **Incremental market refresh (Week 7)** — merge latest JPM/VIX into raw Parquet:
+   ```python
+   from src.data.market_updater import update_market_data_raw
+   update_market_data_raw(lookback_days=60)
+   ```
+
+### Prototype apps (Week 7)
+
+- **Streamlit UI (Rubinstein + stress + data buttons):**
+  ```bash
+  streamlit run app/streamlit_app.py
+  ```
+- **FastAPI:**
+  ```bash
+  uvicorn app.api.main:app --reload
+  ```
+- **Week 7 sensitivity report generation:**
+  ```bash
+  python scripts/analysis/week7_sensitivity.py
+  ```
+
 ### CI/CD
 
 GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` as a repository secret (Settings → Secrets and variables → Actions) for full Treasury data.
@@ -140,11 +176,14 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 5 ML frameworks notebook](notebooks/week5_ml_frameworks.ipynb) – Initial train/validation/test pipeline demo
 - [Week 6 report](docs/weekly_reports/week6_report.md) – Tuning, final evaluation, and interpretability completion
 - [Week 6 comparative analysis](docs/week6_comparative_analysis.md) – Final tuning, ML vs BSM, SHAP/LIME outputs
+- [Week 7 report](docs/weekly_reports/week7_report.md) – Sensitivity, tooling, live data
+- [Week 7 sensitivity analysis](docs/week7_sensitivity_analysis.md) – SHAP (VIX/sentiment) + extreme scenarios
+- [Week 7 timeline & modules](docs/week7_project_timeline.md) – Core modules and commands
 
 ### Current Phase
 
-- Week 6: Hyperparameter optimization, final model evaluation, and SHAP/LIME analysis
-- Next: package selected model for deployment interface (Streamlit/FastAPI)
+- Week 7: Extended sensitivity, Streamlit/FastAPI prototype, Yahoo auto-merge for raw data
+- Next: harden deployment (optional Docker), auth, and ML inference behind API flags
 
 ## 📝 Development Notes
 
