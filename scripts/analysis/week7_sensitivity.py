@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,6 +34,7 @@ except ImportError as exc:  # pragma: no cover
 CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yaml"
 REPORT_DIR = PROJECT_ROOT / "data" / "reports" / "week7"
 PLOTS_DIR = REPORT_DIR / "plots"
+WEEK6_MODELS_DIR = PROJECT_ROOT / "models" / "week6"
 
 
 def ensure_dirs() -> None:
@@ -118,6 +120,155 @@ def extreme_scenario_table(
         },
     ]
     return pd.DataFrame(rows)
+
+
+def _safe_get_model(path: Path):
+    if path.exists():
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return None
+
+
+def _run_shap_for_subset(
+    model: GradientBoostingRegressor,
+    X_subset: np.ndarray,
+    feature_names: List[str],
+) -> pd.DataFrame:
+    if len(X_subset) == 0:
+        return pd.DataFrame(columns=["feature", "mean_abs_shap"])
+    explainer = shap.TreeExplainer(model)
+    vals = explainer.shap_values(X_subset)
+    out = pd.DataFrame(
+        {"feature": feature_names, "mean_abs_shap": np.mean(np.abs(vals), axis=0)}
+    ).sort_values("mean_abs_shap", ascending=False)
+    return out
+
+
+def maturity_bucket_analysis(
+    frame: pd.DataFrame,
+    k: float,
+    r_default: float,
+    q: float,
+    ml_model,
+) -> pd.DataFrame:
+    """
+    Compare VIX/sentiment SHAP contributions across T2 buckets.
+    Uses fixed fractions T1=0.5*T2 and shared feature space.
+    """
+    buckets = [
+        ("short_0.5y", 0.25, 0.5),
+        ("mid_1.0y", 0.5, 1.0),
+        ("long_1.5y", 0.75, 1.5),
+    ]
+    rows = []
+    for label, t1, t2 in buckets:
+        t1_days = int(round(t1 * 252))
+        t2_days = int(round(t2 * 252))
+        X_df, _, _, _ = build_pricing_dataset(
+            frame=frame,
+            k=k,
+            r_default=r_default,
+            q=q,
+            t1_years=t1,
+            t2_years=t2,
+            t1_days=t1_days,
+            t2_days=t2_days,
+            target_mode="direct",
+            include_bsm_feature=True,
+        )
+        if len(X_df) == 0:
+            continue
+        X_subset = X_df.values
+        imp = _run_shap_for_subset(ml_model, X_subset, list(X_df.columns))
+        vix = imp.loc[imp["feature"] == "vix_t", "mean_abs_shap"]
+        senti = imp.loc[imp["feature"] == "sentiment_proxy", "mean_abs_shap"]
+        rows.append(
+            {
+                "maturity_bucket": label,
+                "t1_years": t1,
+                "t2_years": t2,
+                "n_samples": int(len(X_df)),
+                "vix_t_mean_abs_shap": float(vix.iloc[0]) if len(vix) else np.nan,
+                "sentiment_proxy_mean_abs_shap": float(senti.iloc[0]) if len(senti) else np.nan,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def moneyness_bucket_analysis(
+    X_df: pd.DataFrame,
+    ml_model,
+) -> pd.DataFrame:
+    """
+    Compare VIX/sentiment SHAP contributions across OTM/ATM/ITM buckets.
+    """
+    if "moneyness_t" not in X_df.columns:
+        return pd.DataFrame()
+    bins = [-np.inf, 0.95, 1.05, np.inf]
+    labels = ["OTM", "ATM", "ITM"]
+    bucket = pd.cut(X_df["moneyness_t"], bins=bins, labels=labels, right=False)
+    rows = []
+    for b in labels:
+        sub = X_df.loc[bucket == b]
+        if len(sub) == 0:
+            continue
+        imp = _run_shap_for_subset(ml_model, sub.values, list(X_df.columns))
+        vix = imp.loc[imp["feature"] == "vix_t", "mean_abs_shap"]
+        senti = imp.loc[imp["feature"] == "sentiment_proxy", "mean_abs_shap"]
+        rows.append(
+            {
+                "moneyness_bucket": b,
+                "n_samples": int(len(sub)),
+                "vix_t_mean_abs_shap": float(vix.iloc[0]) if len(vix) else np.nan,
+                "sentiment_proxy_mean_abs_shap": float(senti.iloc[0]) if len(senti) else np.nan,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def event_window_calibration(frame: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compare synthetic scenario shocks against observed historical extremes:
+      - 2020-03 crash window
+      - 2022 rate-hike window
+    """
+    df = frame.copy()
+    out = []
+    windows = [
+        ("covid_crash_2020", "2020-02-15", "2020-04-30"),
+        ("fed_hikes_2022", "2022-03-01", "2022-12-31"),
+    ]
+    for name, start, end in windows:
+        sub = df.loc[(df.index >= pd.Timestamp(start)) & (df.index <= pd.Timestamp(end))]
+        if len(sub) < 10:
+            continue
+        sigma_base = float(sub["sigma_252d"].median())
+        sigma_peak = float(sub["sigma_252d"].max())
+        sigma_ratio = sigma_peak / sigma_base if sigma_base > 0 else np.nan
+
+        r_base = float(sub["r"].median())
+        r_peak = float(sub["r"].max())
+        r_hike_abs = r_peak - r_base
+
+        vix_base = float(sub["vix"].median())
+        vix_peak = float(sub["vix"].max())
+        vix_ratio = vix_peak / vix_base if vix_base > 0 else np.nan
+
+        out.append(
+            {
+                "event_window": name,
+                "start": start,
+                "end": end,
+                "obs_sigma_peak_over_median": sigma_ratio,
+                "obs_rate_peak_minus_median": r_hike_abs,
+                "obs_vix_peak_over_median": vix_ratio,
+                "scenario_sigma_shock": 1.50,
+                "scenario_rate_shock_abs": 0.02,
+                "scenario_sigma_covers_obs": bool(sigma_ratio <= 1.50) if np.isfinite(sigma_ratio) else False,
+                "scenario_rate_covers_obs": bool(r_hike_abs <= 0.02) if np.isfinite(r_hike_abs) else False,
+            }
+        )
+    return pd.DataFrame(out)
 
 
 def main() -> None:
@@ -213,6 +364,16 @@ def main() -> None:
     scenario_df.to_csv(REPORT_DIR / "extreme_scenarios_last_row.csv", index=False)
     scenario_cfg.to_csv(REPORT_DIR / "extreme_scenarios_config_params.csv", index=False)
 
+    # Teacher follow-up: segmented SHAP and historical event calibration
+    # Use the same tree surrogate for stable SHAP in all segmented analyses.
+    _ = _safe_get_model(WEEK6_MODELS_DIR / "best_pricing_model_mlp.pkl")
+    maturity_df = maturity_bucket_analysis(frame, k, r_default, q, model)
+    moneyness_df = moneyness_bucket_analysis(X_df, model)
+    event_df = event_window_calibration(frame)
+    maturity_df.to_csv(REPORT_DIR / "shap_by_maturity_bucket.csv", index=False)
+    moneyness_df.to_csv(REPORT_DIR / "shap_by_moneyness_bucket.csv", index=False)
+    event_df.to_csv(REPORT_DIR / "historical_event_calibration.csv", index=False)
+
     def _mean_abs(name: str) -> Optional[float]:
         sub = impact.loc[impact["feature"] == name, "mean_abs_shap"]
         return float(sub.iloc[0]) if len(sub) else None
@@ -228,6 +389,9 @@ def main() -> None:
             "shap_vix_sentiment": str(highlight_path.relative_to(PROJECT_ROOT)),
             "extreme_last_row": "data/reports/week7/extreme_scenarios_last_row.csv",
             "extreme_config": "data/reports/week7/extreme_scenarios_config_params.csv",
+            "shap_by_maturity": "data/reports/week7/shap_by_maturity_bucket.csv",
+            "shap_by_moneyness": "data/reports/week7/shap_by_moneyness_bucket.csv",
+            "historical_event_calibration": "data/reports/week7/historical_event_calibration.csv",
         },
     }
     with open(REPORT_DIR / "week7_sensitivity_summary.json", "w", encoding="utf-8") as f:

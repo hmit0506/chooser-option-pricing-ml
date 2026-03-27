@@ -11,6 +11,9 @@
     "shap_mean_abs_impact": "data/reports/week7/shap_mean_abs_impact.csv",
     "shap_vix_sentiment": "data/reports/week7/shap_vix_sentiment_highlight.csv",
     "extreme_last_row": "data/reports/week7/extreme_scenarios_last_row.csv",
-    "extreme_config": "data/reports/week7/extreme_scenarios_config_params.csv"
+    "extreme_config": "data/reports/week7/extreme_scenarios_config_params.csv",
+    "shap_by_maturity": "data/reports/week7/shap_by_maturity_bucket.csv",
+    "shap_by_moneyness": "data/reports/week7/shap_by_moneyness_bucket.csv",
+    "historical_event_calibration": "data/reports/week7/historical_event_calibration.csv"
   }
 }

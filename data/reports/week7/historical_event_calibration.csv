@@ -1,0 +1,3 @@
+event_window,start,end,obs_sigma_peak_over_median,obs_rate_peak_minus_median,obs_vix_peak_over_median,scenario_sigma_shock,scenario_rate_shock_abs,scenario_sigma_covers_obs,scenario_rate_covers_obs
+covid_crash_2020,2020-02-15,2020-04-30,1.1280059284788895,0.30999999999999994,1.9706864691521353,1.5,0.02,True,False
+fed_hikes_2022,2022-03-01,2022-12-31,1.1141596081385945,0.012050000000000005,1.426056397673542,1.5,0.02,True,True

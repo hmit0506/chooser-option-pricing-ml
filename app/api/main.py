@@ -1,9 +1,4 @@
-"""
-FastAPI skeleton for chooser pricing and health checks (Week 7).
-
-Run locally:
-  uvicorn app.api.main:app --reload --app-dir .
-"""
+"""FastAPI service for pricing + dashboard data (Week 8)."""
 
 from __future__ import annotations
 
@@ -20,6 +15,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.data.market_updater import get_latest_quote_summary, update_market_data_raw
 from src.models import rubinstein_chooser
+from src.tooling.pricing_tool import (
+    dashboard_series,
+    dual_price,
+    load_tool_context,
+    performance_metrics,
+    sensitivity_tables,
+)
 
 CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yaml"
 
@@ -44,7 +46,20 @@ class RubinsteinResponse(BaseModel):
     model: str = "rubinstein_chooser"
 
 
+class DualPriceRequest(BaseModel):
+    s: float
+    k: float
+    r: float
+    q: float
+    sigma: float
+    t1: float
+    t2: float
+    vix: float
+    sentiment: float = Field(..., ge=0.0, le=1.0)
+
+
 app = FastAPI(title="Chooser Option Pricing API", version="0.1.0")
+_CTX = load_tool_context()
 
 
 @app.get("/health")
@@ -63,6 +78,22 @@ def price_rubinstein(body: RubinsteinRequest) -> RubinsteinResponse:
     return RubinsteinResponse(price=float(p))
 
 
+@app.post("/price/dual")
+def price_dual(body: DualPriceRequest) -> dict:
+    return dual_price(
+        ctx=_CTX,
+        s=body.s,
+        k=body.k,
+        r=body.r,
+        q=body.q,
+        sigma=body.sigma,
+        t1=body.t1,
+        t2=body.t2,
+        vix=body.vix,
+        sentiment=body.sentiment,
+    )
+
+
 @app.post("/data/update_market")
 def update_market(lookback_days: int = 60) -> dict:
     """Trigger raw Yahoo merge (JPM + VIX)."""
@@ -72,3 +103,21 @@ def update_market(lookback_days: int = 60) -> dict:
 @app.get("/data/latest_quotes")
 def latest_quotes() -> dict:
     return get_latest_quote_summary()
+
+
+@app.get("/dashboard/series")
+def get_dashboard_series(n_points: int = 200) -> list[dict]:
+    df = dashboard_series(_CTX, n_points=n_points).reset_index().rename(columns={"index": "date"})
+    df["date"] = df["date"].astype(str)
+    return df.to_dict(orient="records")
+
+
+@app.get("/dashboard/metrics")
+def get_metrics() -> list[dict]:
+    return performance_metrics().to_dict(orient="records")
+
+
+@app.get("/dashboard/sensitivity")
+def get_sensitivity() -> dict:
+    tabs = sensitivity_tables()
+    return {k: v.to_dict(orient="records") for k, v in tabs.items()}

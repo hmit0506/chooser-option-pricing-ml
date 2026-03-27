@@ -36,12 +36,15 @@ chooser-option-pricing/
 │   ├── week6_comparative_analysis.md
 │   ├── week7_sensitivity_analysis.md
 │   ├── week7_project_timeline.md
+│   ├── week8_final_report.md
+│   ├── week8_demo_video_script.md
+│   ├── week8_presentation_deck.md
 │   └── weekly_reports/          # Weekly progress reports
 │
 ├── app/                         # Week 7+ tooling
-│   ├── streamlit_app.py         # Prototype UI
+│   ├── streamlit_app.py         # Week 8 pricing dashboard
 │   └── api/
-│       └── main.py              # FastAPI service
+│       └── main.py              # FastAPI service (dual pricing + dashboard)
 │
 ├── .github/workflows/           # CI/CD
 │   └── preprocessing.yml       # Data collection + preprocessing pipeline
@@ -64,7 +67,8 @@ chooser-option-pricing/
 │   ├── data/                    # Data loaders + market_updater (Week 7)
 │   ├── features/                # Feature engineering
 │   ├── models/                  # BSM chooser pricing module (Week 3)
-│   └── ml/                      # ML datasets, metrics, and model wrappers (Week 5)
+│   ├── ml/                      # ML datasets, metrics, and model wrappers (Week 5)
+│   └── tooling/                 # Week 8 pricing service layer
 │
 ├── tests/                       # Unit tests
 ├── .env.example                 # API key template
@@ -89,7 +93,7 @@ chooser-option-pricing/
 - **scripts/analysis/**  
   Week 7 sensitivity (SHAP + stress scenarios).
 - **app/**  
-  Streamlit prototype and FastAPI skeleton for pricing and data refresh.
+  Week 8 tool surface: Streamlit dashboard and FastAPI endpoints.
 - **src/data/market_updater.py**  
   Near-real-time Yahoo merge into `data/raw/yahoo_finance/` for UI/API refresh.
 - **data/raw/**  
@@ -144,9 +148,9 @@ pip install -r requirements.txt
    update_market_data_raw(lookback_days=60)
    ```
 
-### Prototype apps (Week 7)
+### Tool apps (Week 8)
 
-- **Streamlit UI (Rubinstein + stress + data buttons):**
+- **Streamlit UI (dual pricing + error bands + dashboard):**
   ```bash
   streamlit run app/streamlit_app.py
   ```
@@ -154,10 +158,20 @@ pip install -r requirements.txt
   ```bash
   uvicorn app.api.main:app --reload
   ```
-- **Week 7 sensitivity report generation:**
+- **Week 7/8 sensitivity report generation:**
   ```bash
   python scripts/analysis/week7_sensitivity.py
   ```
+
+### API snapshot (Week 8)
+
+- `POST /price/rubinstein`
+- `POST /price/dual`
+- `GET /dashboard/series`
+- `GET /dashboard/metrics`
+- `GET /dashboard/sensitivity`
+- `POST /data/update_market`
+- `GET /data/latest_quotes`
 
 ### CI/CD
 
@@ -179,11 +193,15 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 7 report](docs/weekly_reports/week7_report.md) – Sensitivity, tooling, live data
 - [Week 7 sensitivity analysis](docs/week7_sensitivity_analysis.md) – SHAP (VIX/sentiment) + extreme scenarios
 - [Week 7 timeline & modules](docs/week7_project_timeline.md) – Core modules and commands
+- [Week 8 report](docs/weekly_reports/week8_report.md) – Tool completion and final packaging
+- [Week 8 final report](docs/week8_final_report.md) – Full project synthesis
+- [Week 8 demo script](docs/week8_demo_video_script.md) – 5–10 minute demo runbook
+- [Week 8 deck outline](docs/week8_presentation_deck.md) – Final presentation structure
 
 ### Current Phase
 
-- Week 7: Extended sensitivity, Streamlit/FastAPI prototype, Yahoo auto-merge for raw data
-- Next: harden deployment (optional Docker), auth, and ML inference behind API flags
+- Week 8: Tool feature completion + final report/demo/deck preparation
+- Next: final polish, recording, and submission
 
 ## 📝 Development Notes
 

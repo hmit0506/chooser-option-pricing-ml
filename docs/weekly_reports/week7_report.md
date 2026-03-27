@@ -4,6 +4,7 @@
 
 1. **Extended sensitivity analysis**
    - Script `scripts/analysis/week7_sensitivity.py`: SHAP (tree surrogate) with emphasis on `vix_t` and `sentiment_proxy`; extreme Rubinstein scenarios (+50% vol as \(\sigma\times1.5\), +200 bps on \(r\), combined).
+   - Follow-up added: segmented SHAP by maturity/moneyness and historical calibration against 2020/2022 event windows.
    - Artifacts under `data/reports/week7/` and narrative in `docs/week7_sensitivity_analysis.md`.
 
 2. **Tool framework**
@@ -22,6 +23,6 @@
 
 ## Next steps (Week 8+)
 
-- Optional: Docker Compose for Streamlit + API; input validation hardening.
-- Wire ML model inference behind API feature flag (optional).
-- Schedule `update_market_data_raw` via cron or GitHub Actions if desired.
+- Complete dual-pricing tool with error margin dashboard.
+- Package final report, demo recording, and presentation deck.
+- Optional: deployment hardening (Docker/auth/logging) and scheduled refresh.

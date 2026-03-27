@@ -88,3 +88,40 @@ Summary JSON: `data/reports/week7/week7_sensitivity_summary.json`
 - SHAP values are computed on a **tree surrogate**, not the final MLP, to enable exact Tree SHAP.
 - Extreme scenarios are **deterministic** shifts to \((r,\sigma)\); they do not re-estimate dividend yield or correlation structure.
 - “Sentiment” remains a **VIX-derived proxy**, not news-based sentiment.
+
+---
+
+## 5. Teacher Follow-up: Segmented SHAP
+
+To address whether `vix_t` and `sentiment_proxy` contributions differ by product conditions, we added two segmented analyses:
+
+1. **By maturity bucket** (`T2=0.5y / 1.0y / 1.5y`, with `T1=0.5*T2`)
+2. **By moneyness bucket** (`OTM`, `ATM`, `ITM` by `moneyness_t`)
+
+Artifacts:
+
+- `data/reports/week7/shap_by_maturity_bucket.csv`
+- `data/reports/week7/shap_by_moneyness_bucket.csv`
+
+These tables report mean absolute SHAP values for `vix_t` and `sentiment_proxy` in each bucket.
+
+---
+
+## 6. Teacher Follow-up: Historical Extreme-event Calibration
+
+To validate stress settings against real market history, we added event-window calibration for:
+
+- **2020-03 crash period** (COVID risk-off)
+- **2022 hiking cycle** (aggressive Fed tightening)
+
+For each window, we compare observed extremes with the synthetic stress parameters:
+
+- observed \(\sigma_{252}\) peak / median vs scenario \(1.5\times\)
+- observed \(r\) peak - median vs scenario \(+0.02\)
+- observed VIX peak / median (context)
+
+Artifact:
+
+- `data/reports/week7/historical_event_calibration.csv`
+
+This gives a direct sanity check on whether `+50% vol` and `+200 bps` are conservative or insufficient relative to historical windows.
