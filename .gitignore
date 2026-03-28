@@ -130,3 +130,6 @@ build/
 
 # Local LaTeX sources (optional; markdown report remains canonical in repo)
 docs/week8_final_report.tex
+
+# Local presentation deck (edited offline; not versioned)
+docs/week8_presentation.pptx
