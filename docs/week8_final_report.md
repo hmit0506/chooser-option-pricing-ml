@@ -1,173 +1,68 @@
 # Final Project Report (Week 8)
 
-## 1. Executive Summary
+## 1. Background and Research Motivation
 
-This project builds an end-to-end chooser-option research and tooling pipeline:
+This project is conducted in the context of quantitative option research, with a specific focus on chooser options. A chooser option allows the holder to decide at time \(T_1\) whether the contract will become a European call or a European put, while keeping the same strike \(K\) and maturity \(T_2\). In textbook settings, this product can be valued using closed-form frameworks such as Rubinstein/BSM under a set of restrictive assumptions. In practical markets, however, pricing performance is affected by changing volatility regimes, interest-rate shifts, and sentiment-related state changes. The internship therefore sets a clear target: start from a theoretically sound baseline, then build a data-driven enhancement path and eventually deliver a usable tool interface.
 
-1. Data acquisition and preprocessing with real market signals (JPM, VIX, rates).
-2. BSM/Rubinstein baseline replication and regime diagnostics.
-3. ML enhancement with two architectures and time-series evaluation.
-4. Sensitivity, interpretability, and deployable tool prototype (Streamlit + FastAPI).
+The work spans eight weeks and is organized as a complete pipeline rather than isolated experiments. The pipeline covers data collection, preprocessing, model replication, baseline validation, machine-learning extension, robustness diagnostics, sensitivity analysis, and toolization. The final output is not only a model comparison table but also an executable pricing prototype with API and dashboard views, allowing both research interpretation and demonstration delivery.
 
-Core result: the best end-to-end ML model outperforms the BSM baseline on proxy target error metrics, while sensitivity and stress testing clarify where the model is stable and where uncertainty remains high.
+## 2. Problem Definition and Practical Constraints
 
----
+The primary task is to estimate chooser option value in a way that is both theoretically grounded and empirically usable. A direct supervised-learning setup based on publicly available chooser transaction prices is difficult because this data is sparse and not cleanly accessible in open channels. To preserve reproducibility and keep the evaluation consistent across milestones, the project uses a documented realized-proxy target as the benchmark target. This choice introduces limitations, but it enables a stable model-development loop and transparent comparison between baseline and ML variants.
 
-## 2. Problem Setup
+From a research perspective, the project has four practical questions. First, whether BSM/Rubinstein can be faithfully replicated as a baseline under modern data tooling. Second, whether ML enhancement can meaningfully reduce pricing error relative to baseline in out-of-sample tests. Third, whether model behavior is explainable in terms of economically meaningful drivers such as volatility, rates, and sentiment proxy. Fourth, whether the entire workflow can be wrapped into a demonstrable tool with near-real-time data refresh.
 
-A simple chooser option lets the holder decide at \(T_1\) whether the contract becomes a European call or put (same \(K, T_2\)). The project combines:
+## 3. Data Pipeline and Feature Construction
 
-- Baseline finance model (Rubinstein/BSM),
-- Real-world market features,
-- Machine-learning refinements for improved pricing accuracy.
+The data layer integrates market series from Yahoo Finance and macro-rate series from FRED. The Yahoo block provides JPM OHLCV, VIX, and dividends; the FRED block provides rate information used in risk-free-rate related features. Data engineering is implemented with reliability in mind: missing values are handled through interpolation, outliers are treated with IQR-based logic, and all series are aligned to a trading-day index with forward filling where appropriate. To avoid pipeline fragility in cloud environments, fallback logic is included when certain FRED resources are unavailable.
 
-Because public chooser transaction data is sparse, validation uses a reproducible realized-proxy target documented in Week 4.
+After cleaning and alignment, the feature set combines traditional and regime-aware signals. Traditional signals include return and realized volatility windows, while regime-aware signals include VIX level/momentum, rate momentum, sentiment proxy, and moneyness-related variables. The implementation is maintained in `src/preprocess.py` and `src/features/feature_engineering.py`, and definitions are documented in `docs/feature_engineering.md`. This design ensures each downstream model uses the same canonical feature source, reducing experiment drift.
 
----
+## 4. Baseline Modeling: BSM/Rubinstein Replication
 
-## 3. Data and Feature Pipeline
+The baseline stage reproduces chooser-option valuation through both simulation-based and analytic routes. Monte Carlo path logic is implemented to maintain conceptual consistency with stochastic pricing intuition, and Rubinstein closed-form pricing is used as the primary deterministic baseline for subsequent comparisons. This phase establishes the benchmark behavior before introducing machine-learning complexity.
 
-### 3.1 Data sources
+Week 4 validation focuses on error measurement and regime diagnostics. With the realized-proxy target in place, baseline predictions are evaluated through MAE and RMSE, then inspected under market-state segmentation. This provides two essential outputs: a quantitative benchmark that can be reused in later weeks and a qualitative map of baseline failure modes under stressed regimes.
 
-- Yahoo Finance: JPM OHLCV, VIX, dividends
-- FRED: Treasury yields (with fallback handling if key/data unavailable)
+## 5. Machine Learning Framework and Evaluation Method
 
-### 3.2 Engineering pipeline
+The ML phase introduces two complementary architectures. The first architecture predicts volatility and feeds it back into BSM-style pricing, preserving financial-structure interpretability. The second architecture performs end-to-end supervised pricing directly on engineered features. This dual design is intentional: it allows a controlled comparison between structurally constrained ML and purely predictive ML.
 
-- Missing value interpolation
-- IQR outlier handling
-- Trading-day alignment and forward-fill where appropriate
-- Feature set including returns, multi-window vol, VIX/rate momentum, sentiment proxy
+To avoid look-ahead bias, all model development uses strict chronological splitting with a 70/15/15 train/validation/test configuration. Hyperparameter optimization uses time-series cross-validation. Evaluation uses MAE, RMSE, and R², while additional diagnostics include train/val/test gap analysis, search-space transparency, and collinearity checks. In practice, this means the project evaluates not only point performance but also generalization behavior and model risk indicators.
 
-Main scripts/modules:
+## 6. Key Quantitative Results
 
-- `scripts/data_collection/collect_all.py`
-- `src/preprocess.py`
-- `src/features/feature_engineering.py`
+The Week 6 benchmark comparison shows a clear improvement path from baseline to advanced models. The BSM baseline records MAE 34.7897 and RMSE 37.8863 on the test target. The hybrid route using XGB volatility plus BSM repricing improves this to MAE 32.5829 and RMSE 35.0129. End-to-end models further improve error in selected configurations, with the best model (`approach2_mlp`) reaching MAE 27.3385 and RMSE 29.8961, corresponding to roughly 21% improvement over baseline on both MAE and RMSE dimensions in the stored benchmark output.
 
----
+Beyond point metrics, robustness diagnostics provide additional context. Train/validation/test differences indicate that the test period remains significantly harder than in-sample windows, consistent with distribution drift rather than simple memorization. Hyperparameter spaces and selected best parameters are exported (`data/reports/week6/hyperparameter_search_spaces.json`) to make model selection auditable. Correlation and VIF diagnostics are also included, with explicit treatment of deterministic redundancy between `moneyness_t` and `s_t`.
 
-## 4. Modeling Stages
+## 7. Explainability, Sensitivity, and Stress Validation
 
-### 4.1 Week 3–4 Baseline
+Explainability is addressed with SHAP/LIME in Week 6 and extended in Week 7. A global SHAP ranking is first generated to identify key drivers. To respond to follow-up concerns regarding conditional behavior, segmented SHAP analysis is then added along two axes: maturity buckets and moneyness buckets. The corresponding outputs are stored in `data/reports/week7/shap_by_maturity_bucket.csv` and `data/reports/week7/shap_by_moneyness_bucket.csv`. This directly addresses whether `vix_t` and `sentiment_proxy` contributions remain stable or shift across product states.
 
-- Monte Carlo chooser + Rubinstein closed-form baseline
-- Error analysis and regime split by volatility/sentiment
+Stress testing initially uses deterministic scenarios aligned with project requirements: \(+50\%\) volatility shock, \(+200\) bps rate shock, and a combined shock. To test realism, these synthetic scenarios are then calibrated against historical event windows, specifically the 2020 crash and the 2022 hiking cycle. The comparison output (`data/reports/week7/historical_event_calibration.csv`) shows how scenario magnitudes relate to observed historical peaks, allowing explicit discussion of whether the stress envelope is conservative or insufficient under different market episodes.
 
-### 4.2 Week 5–6 ML expansion
+## 8. Tool Completion and Deployment-Oriented Delivery
 
-Two tracks:
+The final week shifts emphasis from model development to tool completion. A service layer (`src/tooling/pricing_tool.py`) is implemented to centralize pricing logic and dashboard data assembly. This layer loads the selected ML model, computes dual pricing outputs, estimates error margins from historical residuals, and provides trend and sensitivity tables.
 
-1. **Approach 1:** volatility model \(\rightarrow\) BSM repricing
-2. **Approach 2:** end-to-end supervised pricing
+On the interface side, Streamlit is upgraded from prototype to a structured pricing dashboard. The app now supports dual pricing display (BSM and ML), uncertainty bands (68% and 95%), trend plots for target versus model outputs, rolling error views, and sensitivity/performance table rendering. In parallel, the FastAPI service is extended with dual-pricing and dashboard endpoints, including `/price/dual`, `/dashboard/series`, `/dashboard/metrics`, and `/dashboard/sensitivity`, while retaining health, default config, and market-update endpoints.
 
-Training/evaluation standards:
+For near-real-time integration, `src/data/market_updater.py` provides incremental JPM/VIX refresh and merging into raw storage, so the tool can update data without rerunning full historical collection each time. This balances practical refresh speed and reproducibility requirements.
 
-- strict chronological split (70/15/15)
-- time-series CV for tuning
-- MAE/RMSE/R² as primary metrics
-- SHAP/LIME interpretability outputs
+## 9. Deliverables and Completion Status
 
----
+By the end of Week 8, the repository contains all required final-stage components. The pricing tool is deployable as a prototype with runnable Streamlit and FastAPI entry points and documented commands in README. The final written synthesis is provided in this report file and can be exported to PDF. Demo recording preparation is completed via a structured script in `docs/week8_demo_video_script.md`, and presentation preparation is completed via `docs/week8_presentation_deck.md`.
 
-## 5. Key Results
+The project therefore closes with complete research traceability from data to model to interface, rather than isolated notebooks or non-reproducible snapshots.
 
-### 5.1 Performance
+## 10. Limitations and Future Work
 
-Week 6 benchmark outputs are stored in:
+The first limitation is target construction: the benchmark remains a reproducible proxy rather than direct chooser transaction prices. The second limitation is sentiment representation: current sentiment is VIX-derived and does not yet integrate NLP-based news flow. The third limitation is stress modeling: deterministic shocks provide clarity but cannot fully capture joint regime transitions and path-dependent structural breaks. The fourth limitation is deployment maturity: while the tool is robust for demonstration and internal usage, production-grade concerns such as authentication, observability, and model governance should be further strengthened.
 
-- `data/reports/week6/model_comparison.csv`
-- `docs/week6_comparative_analysis.md`
+Future development should prioritize richer sentiment ingestion, walk-forward retraining and monitoring schedules, expanded stress engines, and deployment hardening with model versioning and structured logs. These steps can convert the current strong prototype into a maintainable production-facing quant service.
 
-Summary: best ML model improves MAE/RMSE versus BSM baseline on test set.
+## 11. Conclusion
 
-### 5.2 Robustness diagnostics
-
-- Overfitting diagnostics (train/val/test + gap metrics)
-- Search-space + best-parameter export
-- Collinearity checks (correlation + VIF)
-
-Artifacts:
-
-- `data/reports/week6/week6_results.json`
-- `data/reports/week6/hyperparameter_search_spaces.json`
-- `data/reports/week6/vif_*.csv`
-
----
-
-## 6. Extended Sensitivity and Stress Tests (Week 7)
-
-### 6.1 SHAP impact quantification
-
-- Global SHAP ranking
-- `vix_t` and `sentiment_proxy` highlighted explicitly
-- Added segmented SHAP by:
-  - maturity bucket
-  - moneyness bucket
-
-### 6.2 Extreme scenarios and historical calibration
-
-Scenarios:
-
-- +50% volatility
-- +200 bps rates
-- combined
-
-Calibration against event windows:
-
-- 2020 crash
-- 2022 hike cycle
-
-Artifacts:
-
-- `data/reports/week7/shap_by_maturity_bucket.csv`
-- `data/reports/week7/shap_by_moneyness_bucket.csv`
-- `data/reports/week7/historical_event_calibration.csv`
-
----
-
-## 7. Tool Completion (Week 8)
-
-### 7.1 Deployable components
-
-- **Streamlit app**: `app/streamlit_app.py`
-  - dual pricing (BSM + best ML)
-  - error margin display
-  - dashboard for trend/errors/metrics/sensitivity tables
-- **FastAPI service**: `app/api/main.py`
-  - `/price/rubinstein`
-  - `/price/dual`
-  - `/dashboard/series`
-  - `/dashboard/metrics`
-  - `/dashboard/sensitivity`
-  - `/data/update_market`, `/data/latest_quotes`
-
-### 7.2 Real-time integration
-
-- `src/data/market_updater.py` for incremental JPM/VIX refresh and merge
-
----
-
-## 8. Limitations
-
-1. Target is a proxy rather than fully observed chooser transactions.
-2. Sentiment remains proxy-based (VIX-derived), not NLP-news sentiment.
-3. Stress scenarios are deterministic shocks; full regime simulation remains future work.
-
----
-
-## 9. Practical Impact
-
-- Delivers a reproducible quant workflow from raw data to API/UI tool.
-- Provides baseline-vs-ML evidence and explainability artifacts.
-- Enables future extension to production serving and richer data feeds.
-
----
-
-## 10. Next Steps
-
-1. Integrate richer sentiment sources (news/NLP).
-2. Add walk-forward retraining schedule.
-3. Add deployment hardening (auth, logging, model versioning, containerization).
-4. Validate against additional market proxies/instruments where available.
+This internship project successfully translates chooser-option pricing research into a reproducible engineering pipeline and a demonstrable tool. It starts with theoretical baseline replication, quantifies baseline limitations, introduces ML enhancement under strict time-series validation, extends analysis with explainability and historical stress calibration, and finishes with a dual-pricing dashboard and API surface. The final outcome is not only an improvement in benchmark error metrics but also a clearer, more operational way to analyze and present pricing behavior under changing market regimes.
 

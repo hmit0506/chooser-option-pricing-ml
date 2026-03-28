@@ -127,3 +127,6 @@ build/
 # Cursor configuration files
 .cursorignore
 .cursorrules
+
+# Local LaTeX sources (optional; markdown report remains canonical in repo)
+docs/week8_final_report.tex
