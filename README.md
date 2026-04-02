@@ -147,35 +147,143 @@ pip install -r requirements.txt
    from src.data.market_updater import update_market_data_raw
    update_market_data_raw(lookback_days=60)
    ```
+   Or use the **Refresh Yahoo raw** button in the Streamlit sidebar / `POST /data/update_market` on the API. After a refresh, restart the app if you need the latest rows inside `load_base_frame()`.
 
-### Tool apps (Week 8)
+### ML training (required for the dual-pricing tool)
 
-- **Streamlit UI (dual pricing + error bands + dashboard):**
-  ```bash
-  streamlit run app/streamlit_app.py
-  ```
-- **FastAPI:**
-  ```bash
-  uvicorn app.api.main:app --reload
-  ```
-- **Week 7/8 sensitivity report generation:**
-  ```bash
-  python scripts/analysis/week7_sensitivity.py
-  ```
+Trained weights are **not** committed to Git (see `.gitignore`: `models/*.pkl`). The Week 8 app (`src/tooling/pricing_tool.py`) loads **`models/week6/best_pricing_model_mlp.pkl`** (or the path recorded in `data/reports/week6/week6_results.json` after a run).
 
-### API snapshot (Week 8)
+1. **Complete at least the data steps above** so `src/ml/datasets.py::load_base_frame()` can read:
+   - `data/raw/yahoo_finance/{TICKER}_daily_ohlcv.parquet` (default `JPM`)
+   - `data/raw/yahoo_finance/VIX_daily.parquet`
+   - `data/raw/fred/DGS10.parquet` (optional; a fallback rate is used if missing)
 
-- `POST /price/rubinstein`
-- `POST /price/dual`
-- `GET /dashboard/series`
-- `GET /dashboard/metrics`
-- `GET /dashboard/sensitivity`
-- `POST /data/update_market`
-- `GET /data/latest_quotes`
+2. **Run the Week 6 pipeline** (hyperparameter search, test metrics, SHAP/LIME, saved models — can take significant time):
+   ```bash
+   python scripts/ml/week6_train_eval.py
+   ```
+   This writes **`models/week6/*.pkl`**, **`data/reports/week6/`** (JSON, CSV, plots, VIF), etc.
+
+3. **Optional — Week 7 sensitivity artifacts for the Streamlit “Sensitivity” tables:**
+   ```bash
+   python scripts/analysis/week7_sensitivity.py
+   ```
+   Requires **`shap`**. Tables read from `data/reports/week7/`; if you skip this step, dual pricing still works after Week 6, but sensitivity sections may be empty.
+
+### Week 8 tool — how to run it correctly
+
+**What the tool does:** `pricing_tool` returns **model-implied** chooser values — Rubinstein/BSM and the trained ML regressor — **not** live CME trade prices. Error bands use historical ML residuals from the loaded context.
+
+**Checklist before `streamlit run`:**
+
+| Step | Purpose |
+|------|--------|
+| `collect_all.py` | Raw Yahoo (+ FRED if key set) |
+| `week6_train_eval.py` | **`.pkl` + `week6_results.json`** (mandatory for ML) |
+| `week7_sensitivity.py` | Optional dashboard sensitivity CSVs |
+| `.env` / `FRED_API_KEY` | Better rate series for `load_base_frame` |
+
+**Streamlit (browser UI):**
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+Open the local URL (usually `http://localhost:8501`). Adjust parameters in the sidebar; review BSM vs ML prices, residual-based bands, and trend charts. Use **Refresh Yahoo raw** / **latest quotes** for near-real-time inputs (still merged into local raw files).
+
+**FastAPI (programmatic access):**
+
+```bash
+uvicorn app.api.main:app --reload
+```
+
+Interactive docs: **`http://127.0.0.1:8000/docs`**.
+
+**API routes (Week 8):**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/price/rubinstein` | Closed-form chooser (request body: spot, strike, rates, vol, maturities) |
+| `POST` | `/price/dual` | BSM + ML prices + error-margin fields |
+| `GET` | `/dashboard/series` | Recent proxy vs BSM vs ML series |
+| `GET` | `/dashboard/metrics` | Week 6 benchmark table |
+| `GET` | `/dashboard/sensitivity` | Week 7 segmented / calibration tables (if files exist) |
+| `POST` | `/data/update_market` | Merge latest Yahoo JPM/VIX into raw storage |
+| `GET` | `/data/latest_quotes` | Small equity/VIX snapshot |
+
+### Troubleshooting
+
+Run commands from the **repository root** (the folder that contains `app/`, `src/`, and `config/`).
+
+**1. Streamlit / FastAPI error on startup (`load_tool_context`)**
+
+| Symptom | What to do |
+|--------|------------|
+| `FileNotFoundError` for `*.pkl` under `models/week6/` | Run `python scripts/ml/week6_train_eval.py` to completion. Confirm the file named in `data/reports/week6/week6_results.json` → `artifacts.best_pricing_model` **exists on disk**. If the repo includes `week6_results.json` from Git but you never trained locally, that path may point to a **missing** pickle — **re-run Week 6** (overwrites JSON + creates `.pkl`) or delete `week6_results.json` and rely on the fallback name `best_pricing_model_mlp.pkl` only after training. |
+| `FileNotFoundError` for `JPM_daily_ohlcv.parquet` or `VIX_daily.parquet` | Run `python scripts/data_collection/collect_all.py`. Check `data/raw/yahoo_finance/`. |
+| `FileNotFoundError` for `DGS10.parquet` | Optional for `load_base_frame` (uses a default rate). For real rates, set `FRED_API_KEY` in `.env` and re-run collection, or accept the fallback. |
+| Empty data / too many NaNs after loading | Yahoo history may be too short for rolling windows (e.g. 252d vol). Use a longer `DATA_START_DATE` in collection if your script supports it, or ensure `collect_all` pulled enough history. |
+| Streamlit shows a stale app after data refresh | Restart Streamlit (`Ctrl+C` and `streamlit run ...` again). `@st.cache_resource` caches `load_tool_context()`. |
+
+**2. `week6_train_eval.py` fails**
+
+| Symptom | What to do |
+|--------|------------|
+| `RuntimeError: shap is required` | `pip install shap` (included in `requirements.txt`; recreate venv if needed). |
+| Errors mentioning `xgboost` | `pip install xgboost` (listed in `requirements.txt`). |
+| Very long runtime or memory pressure | Hyperparameter search is heavy. Close other apps, run on a machine with more RAM, or temporarily narrow search spaces in the script (advanced). |
+
+**3. Pickle / sklearn version errors when loading `.pkl`**
+
+If `pickle.load` raises errors about missing attributes or incompatible objects, your **scikit-learn** version may differ from the one used to train. Prefer `pip install -r requirements.txt` in a **fresh venv**, then **re-run** `week6_train_eval.py` to regenerate `models/week6/*.pkl`.
+
+**4. `week7_sensitivity.py` fails**
+
+Requires **`shap`**. Needs the same **raw Parquet** inputs as `load_base_frame()` (run **`collect_all.py`** first). The script rebuilds pricing features internally; it does **not** load the Week 6 `.pkl`, but it must be able to read **JPM** and **VIX** history from `data/raw/yahoo_finance/`.
+
+**5. “BSM only” without ML**
+
+The shipped app **does not** support ML-off mode. To use only Rubinstein, call **`POST /price/rubinstein`** on FastAPI, or use `src.models.rubinstein_chooser` in Python, without going through `load_tool_context()`.
 
 ### CI/CD
 
-GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` as a repository secret (Settings → Secrets and variables → Actions) for full Treasury data.
+GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` as a repository secret (Settings → Secrets and variables → Actions) for full Treasury data. **CI does not train or publish `.pkl` files**; clone + CI alone will not populate `models/week6/`.
+
+## 🔬 Reproducing results
+
+Use this order so dependencies match the internship milestones.
+
+### A. Scripts (exact pipeline / reports)
+
+| Order | Command | Main outputs |
+|------|---------|--------------|
+| 1 | `python scripts/data_collection/collect_all.py` | `data/raw/**` (gitignored locally) |
+| 2 | `python src/preprocess.py` | `data/processed/processed_dataset.*` |
+| 3 | `python scripts/ml/week6_train_eval.py` | `models/week6/*.pkl`, `data/reports/week6/**` |
+| 4 | `python scripts/analysis/week7_sensitivity.py` | `data/reports/week7/**` |
+| 5 | `streamlit run app/streamlit_app.py` / `uvicorn app.api.main:app` | Interactive tool |
+
+Note: **`data/reports/week6/`** and **`data/reports/week7/`** subsets are **tracked** in Git for key CSV/JSON/plots (see `.gitignore` exceptions). Your local run may refresh those files.
+
+### B. Jupyter notebooks (exploration & paper alignment)
+
+Run from the repo root with the same venv and **after** raw data exists (`collect_all.py`). Execution order:
+
+| Notebook | Milestone | What it reproduces |
+|----------|-----------|-------------------|
+| [notebooks/week3_bsm_pricing.ipynb](notebooks/week3_bsm_pricing.ipynb) | Week 3 | GBM paths, Monte Carlo vs Rubinstein, price ordering (call / chooser / straddle) |
+| [notebooks/week3_validation.ipynb](notebooks/week3_validation.ipynb) | Week 3 | Path-by-path Table 3 checks, parameter sensitivities, MC convergence |
+| [notebooks/week4_validation.ipynb](notebooks/week4_validation.ipynb) | Week 4 | MAE/RMSE vs realized proxy, regime splits; aligns with `docs/week4_validation_report.md` |
+| [notebooks/week5_ml_frameworks.ipynb](notebooks/week5_ml_frameworks.ipynb) | Week 5 | Build datasets, time splits, initial RF/XGB vol + linear/GBDT pricing, metrics vs BSM |
+
+**Authoritative final ML tables and SHAP/LIME exports** come from **`scripts/ml/week6_train_eval.py`**, not from Week 5 notebook defaults. Use the notebook for intuition; use the script for numbers that match `docs/week6_comparative_analysis.md`.
+
+### C. Documentation cross-check
+
+- Baseline metrics and proxy definition: **`docs/week4_validation_report.md`**, **`docs/bsm_benchmark.md`**
+- Final ML comparison: **`docs/week6_comparative_analysis.md`**
+- Sensitivity narrative: **`docs/week7_sensitivity_analysis.md`**
+- Full narrative: **`docs/week8_final_report.md`**
 
 ## 📝 Documentation
 
@@ -198,10 +306,9 @@ GitHub Actions runs collection + preprocessing on schedule. Add `FRED_API_KEY` a
 - [Week 8 demo script](docs/week8_demo_video_script.md) – 5–10 minute demo runbook
 - [Week 8 deck outline](docs/week8_presentation_deck.md) – Final presentation structure
 
-### Current Phase
+### Repository status
 
-- Week 8: Tool feature completion + final report/demo/deck preparation
-- Next: final polish, recording, and submission
+The internship **8-week deliverables** are represented in this repository: data pipeline, BSM/Rubinstein baseline, ML training script, sensitivity analysis, and Week 8 Streamlit/FastAPI tooling. **You must run Week 6 training locally** to use ML-assisted pricing; binary model files are excluded from Git by design.
 
 ## 📝 Development Notes
 
